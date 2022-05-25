@@ -84,3 +84,13 @@ def triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
             t = -np.dot(ray_origin,n-vertex_a) / np.dot(ray_origin,ray_end-ray_origin)
             return t
     return None
+
+
+def plane_intersect(ray_origin, ray_end, plane_point, plane_normal):
+    ray_direction = normalize(ray_end - ray_origin)
+    ray_dot_plane = np.dot(plane_normal, ray_direction)
+    if abs(ray_dot_plane)>1e-6:
+        t = (np.dot(plane_normal, plane_point) - np.dot(plane_normal, ray_origin))/np.dot(plane_normal, ray_direction)
+        if t>=0:
+            return t
+    return None
