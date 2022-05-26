@@ -27,9 +27,6 @@ def find_intersect(obj, ray_origin, ray_end):
     elif obj['type'] == 'triangle':
         return triangle_intersect(ray_origin, ray_end, obj['geom_props']['a'], obj['geom_props']['b'], obj['geom_props']['c'])
     elif obj['type'] == 'plane':
-        ab = obj['geom_props']['b'] - obj['geom_props']['a']
-        ac = obj['geom_props']['c'] - obj['geom_props']['a']
-        plane_normal = np.cross(ab, ac)
-        return plane_intersect(ray_origin, ray_end, obj['geom_props']['a'], plane_normal)
+        return plane_intersect(ray_origin, ray_end, obj['geom_props']['point'], obj['geom_props']['normal'])
     else:
         return []

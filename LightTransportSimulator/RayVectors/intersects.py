@@ -87,10 +87,18 @@ def triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
 
 
 def plane_intersect(ray_origin, ray_end, plane_point, plane_normal):
+    """
+    returns the distance from the origin of the ray to the nearest intersection point
+    :param ray_origin: origin of the ray
+    :param ray_end: pixel on the plane
+    :param plane_point: a point on the plane
+    :param plane_normal: a vector normal to the plane
+    :return: distance from origin to the intersection point, or None
+    """
     ray_direction = normalize(ray_end - ray_origin)
-    ray_dot_plane = np.dot(plane_normal, ray_direction)
+    ray_dot_plane = np.dot(ray_direction, plane_normal)
     if abs(ray_dot_plane)>1e-6:
-        t = (np.dot(plane_normal, plane_point) - np.dot(plane_normal, ray_origin))/np.dot(plane_normal, ray_direction)
-        if t>=0:
+        t = np.dot((plane_point - ray_origin), plane_normal)/ray_dot_plane
+        if t>0:
             return t
     return None
