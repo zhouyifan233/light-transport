@@ -99,6 +99,6 @@ def plane_intersect(ray_origin, ray_end, plane_point, plane_normal):
     ray_dot_plane = np.dot(ray_direction, plane_normal)
     if abs(ray_dot_plane)>1e-6:
         t = np.dot((plane_point - ray_origin), plane_normal)/ray_dot_plane
-        if t>=0:
+        if t>0:
             return t
     return None
