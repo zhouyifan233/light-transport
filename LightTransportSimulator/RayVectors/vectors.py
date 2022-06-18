@@ -1,9 +1,11 @@
 import numpy as np
+from numba import jit
 
+@jit(nopython=True)
 def normalize(vector):
     return vector / np.linalg.norm(vector)
 
-
+@jit(nopython=True)
 def unit_vector(vector):
     """
     :param vector: Any vector as numpy array
@@ -11,7 +13,7 @@ def unit_vector(vector):
     """
     return vector / np.linalg.norm(vector)
 
-
+@jit(nopython=True)
 def angle_between(v1, v2):
     """
     :param v1: first vector
@@ -22,7 +24,7 @@ def angle_between(v1, v2):
     v2_u = unit_vector(v2)
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
-
+@jit(nopython=True)
 def get_direction(p1, p2):
     """
     :param p1: first point
@@ -32,7 +34,7 @@ def get_direction(p1, p2):
     direction = (p1-p2)/np.linalg.norm(p1-p2)
     return  direction
 
-
+@jit(nopython=True)
 def get_direction(p1, p2):
     """
     :param p1: first point
@@ -42,7 +44,7 @@ def get_direction(p1, p2):
     direction = (p1-p2)/np.linalg.norm(p1-p2)
     return  direction
 
-
+@jit(nopython=True)
 def rotate(origin, point, angle):
     """
     :param origin: start point the vector

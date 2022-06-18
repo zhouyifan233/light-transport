@@ -1,4 +1,5 @@
 import numpy as np
+from numba import jit
 
 from LightTransportSimulator.RayVectors.intersects import sphere_intersect, triangle_intersect, plane_intersect
 
@@ -30,3 +31,6 @@ def find_intersect(obj, ray_origin, ray_end):
         return plane_intersect(ray_origin, ray_end, obj['geom_props']['point'], obj['geom_props']['normal'])
     else:
         return []
+
+
+# def load_obj(file_path):

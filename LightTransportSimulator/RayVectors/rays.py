@@ -1,10 +1,11 @@
 import numpy as np
+from numba import jit
 
-
+@jit(nopython=True)
 def reflected_ray(vector, axis):
     return vector - 2 * np.dot(vector, axis) * axis
 
-
+@jit(nopython=True)
 def get_ambience(amb_obj, amb_light):
     """
     illumination model for ambient BRDF
@@ -14,7 +15,7 @@ def get_ambience(amb_obj, amb_light):
     """
     return amb_obj * amb_light
 
-
+@jit(nopython=True)
 def get_diffuse(diff_obj, diff_light, light_vec, surf_norm, shiny_fact=1):
     """
     illumination model for diffuse BRDF
@@ -27,7 +28,7 @@ def get_diffuse(diff_obj, diff_light, light_vec, surf_norm, shiny_fact=1):
     """
     return diff_obj * diff_light * (np.dot(light_vec, surf_norm)**shiny_fact)
 
-
+@jit(nopython=True)
 def get_specular(spec_obj, spec_light, view_dir, surf_norm, shiny_fact):
     """
     illumination model for specular BRDF

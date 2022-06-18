@@ -1,8 +1,9 @@
 import numpy as np
+from numba import jit
 
 from LightTransportSimulator.RayVectors.vectors import normalize
 
-
+@jit(nopython=True)
 def sphere_intersect(center, radius, ray_origin, ray_end):
     """
     returns the distance from the origin of the ray to the nearest intersection point
@@ -26,41 +27,66 @@ def sphere_intersect(center, radius, ray_origin, ray_end):
             return min(t1, t2)
     return None
 
-
-# def triangle_intersect(ray_origin, ray_direction, vertex_a, vertex_b, vertex_c):
-#     """
-#     returns the distance from the origin of the ray to the nearest intersection point
-#     :param ray_origin: origin of the ray
-#     :param ray_direction: direction from the camera to the triangle
-#     :param vertex_a: first vertex of the triangle
-#     :param vertex_b: second vertex of the triangle
-#     :param vertex_c: third vertex of the triangle
-#     :return: distance from origin to the intersection point, or None
-#     """
-#     ab = vertex_b - vertex_a
-#     ac = vertex_c - vertex_a
-#
-#     normal = np.cross(ab, ac)
-#
-#     det = -np.dot(ray_direction, normal)
-#
-#     ao = ray_origin - vertex_a
-#
-#     dao = np.cross(ao, ray_direction)
-#
-#     u = np.dot(ac, dao) / det
-#     v = -(np.dot(ab, dao) / det)
-#     t = np.dot(ao, normal) / det
-#
-#     if det >= 1e-6 and t >= 0 and u >= 0 and v >= 0 and (u+v) <= 1:
-#         print(t)
-#         return t
-#     else:
-#         return None
-
-
+@jit(nopython=True)
 def triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
     """
+    Möller-Trumbore algorithm
+    returns the distance from the origin of the ray to the nearest intersection point
+    :param ray_origin: origin of the ray
+    :param ray_end: pixel on the triangle
+    :param vertex_a: first vertex of the triangle
+    :param vertex_b: second vertex of the triangle
+    :param vertex_c: third vertex of the triangle
+    :return: distance from origin to the intersection point, or None
+    """
+
+    eps = 0.0000001
+
+    ab = vertex_b - vertex_a
+    ac = vertex_c - vertex_a
+
+    ray_direction = normalize(ray_end - ray_origin)
+
+    plane_normal = normalize(np.cross(ab, ac))
+    ray_dot_plane = np.dot(ray_direction, plane_normal)
+
+    if abs(ray_dot_plane)<=eps:
+        return None
+
+    pvec = np.cross(ray_direction, ac)
+
+    det = np.dot(ab, pvec)
+
+    if -eps < det < eps:
+        return None
+
+    inv_det = 1.0 / det
+
+    tvec = ray_origin - vertex_a
+
+    u = np.dot(tvec, pvec) * inv_det
+
+    if u < 0 or u > 1:
+        return None
+
+    qvec = np.cross(tvec, ab)
+
+    v = np.dot(ray_direction, qvec) * inv_det
+
+    if v < 0 or u+v > 1:
+        return None
+
+    t = np.dot(ac, qvec) * inv_det
+
+    if t > eps:
+        return t
+    else:
+        return None
+
+@jit(nopython=True)
+def __triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
+    """
+    Based on ray–tetrahedron intersection
     returns the distance from the origin of the ray to the nearest intersection point
     :param ray_origin: origin of the ray
     :param ray_end: pixel on the triangle
@@ -85,7 +111,7 @@ def triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
             return t
     return None
 
-
+@jit(nopython=True)
 def plane_intersect(ray_origin, ray_end, plane_point, plane_normal):
     """
     returns the distance from the origin of the ray to the nearest intersection point
