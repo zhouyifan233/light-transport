@@ -15,7 +15,8 @@ class Light:
 
 @numba.experimental.jitclass([
     ('camera', numba.float64[:]),
-    ('light', Light.class_type.instance_type),
+    ('lights', numba.types.ListType(Light.class_type.instance_type)),
+    # ('lights', numba.types.ListType(numba.float64[::1])),
     ('width', numba.int64),
     ('height', numba.int64),
     ('max_depth', numba.int64),
@@ -27,9 +28,9 @@ class Light:
     ('image', numba.float64[:,:,:])
 ])
 class Scene:
-    def __init__(self, camera, light, width=400, height=400, max_depth=3):
+    def __init__(self, camera, lights, width=400, height=400, max_depth=3):
         self.camera = camera
-        self.light = light
+        self.lights = lights
         self.width = width
         self.height = height
         self.max_depth = max_depth

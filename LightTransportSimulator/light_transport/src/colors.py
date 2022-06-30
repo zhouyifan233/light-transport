@@ -1,6 +1,6 @@
 import numpy as np
 
-from LightTransportSimulator.light_transport.src.material import Color
+from .material import Color
 
 
 WHITE = Color(ambient=np.array([1, 1, 1], dtype=np.float64),

@@ -1,7 +1,7 @@
 import numpy as np
 import numba
-from LightTransportSimulator.light_transport.src.material import Material, Color
-from LightTransportSimulator.light_transport.src.shapes import Triangle
+from .material import Material, Color
+from .primitives import Triangle
 
 
 def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat):
@@ -48,6 +48,20 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat):
                              material=surface_mat)
 
     box_triangles.append(bottom_wall_2)
+
+    # front_wall_1 = Triangle(vertex_1=np.array([-dim, -dim, dim], dtype=np.float64),
+    #                          vertex_2=np.array([-dim, dim, dim], dtype=np.float64),
+    #                          vertex_3=np.array([dim, -dim, dim], dtype=np.float64),
+    #                          material=surface_mat)
+    #
+    # box_triangles.append(front_wall_1)
+    #
+    # front_wall_2 = Triangle(vertex_1=np.array([dim, -dim, dim], dtype=np.float64),
+    #                          vertex_2=np.array([-dim, dim, dim], dtype=np.float64),
+    #                          vertex_3=np.array([dim, dim, dim], dtype=np.float64),
+    #                          material=surface_mat)
+    #
+    # box_triangles.append(front_wall_2)
 
     left_wall_1 = Triangle(vertex_1=np.array([-dim, dim, -dim], dtype=np.float64),
                            vertex_2=np.array([-dim, dim, dim], dtype=np.float64),

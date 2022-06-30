@@ -11,22 +11,25 @@ class ShapeOptions(enum.Enum):
     SPHERE = 3
 
 
-
 @numba.experimental.jitclass([
     ('type', numba.intp),
     ('vertex_1', numba.float64[:]),
     ('vertex_2', numba.float64[:]),
     ('vertex_3', numba.float64[:]),
+    ('centroid', numba.float64[:]),
     ('material', Material.class_type.instance_type),
+    ('is_light', numba.boolean),
     ('normal', numba.float64[:])
 ])
 class Triangle:
-    def __init__(self, vertex_1, vertex_2, vertex_3, material):
+    def __init__(self, vertex_1, vertex_2, vertex_3, material, is_light=False):
         self.type = ShapeOptions.TRIANGLE.value
         self.vertex_1 = vertex_1
         self.vertex_2 = vertex_2
         self.vertex_3 = vertex_3
+        self.centroid = (vertex_1+vertex_2+vertex_3)/3
         self.material = material
+        self.is_light = is_light
         self.normal = normalize(np.cross(vertex_2-vertex_1, vertex_3-vertex_1))
 
 

@@ -1,7 +1,10 @@
+import numba
 import numpy as np
 from numba import jit
 
+from .primitives import Triangle
 from .vectors import normalize
+from typing import Optional
 
 
 @jit(nopython=True)
@@ -35,15 +38,13 @@ def sphere_intersect(ray_origin, ray_end, sphere):
 
 
 @jit(nopython=True)
-def triangle_intersect(ray_origin, ray_end, triangle):
+def triangle_intersect(ray_origin: numba.float64[:], ray_end: numba.float64[:], triangle: Triangle) -> Optional[numba.float64[:]]:
     """
     Möller-Trumbore algorithm
     returns the distance from the origin of the ray to the nearest intersection point
+    :param triangle: triangle primitive
     :param ray_origin: origin of the ray
     :param ray_end: pixel on the triangle
-    :param vertex_a: first vertex of the triangle
-    :param vertex_b: second vertex of the triangle
-    :param vertex_c: third vertex of the triangle
     :return: distance from origin to the intersection point, or None
     """
 
