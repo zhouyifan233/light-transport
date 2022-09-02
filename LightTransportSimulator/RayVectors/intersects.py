@@ -3,7 +3,7 @@ from numba import jit
 
 from LightTransportSimulator.RayVectors.vectors import normalize
 
-@jit(nopython=True)
+
 def sphere_intersect(center, radius, ray_origin, ray_end):
     """
     returns the distance from the origin of the ray to the nearest intersection point
@@ -27,7 +27,7 @@ def sphere_intersect(center, radius, ray_origin, ray_end):
             return min(t1, t2)
     return None
 
-@jit(nopython=True)
+
 def triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
     """
     Möller-Trumbore algorithm
@@ -83,7 +83,7 @@ def triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
     else:
         return None
 
-@jit(nopython=True)
+
 def __triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
     """
     Based on ray–tetrahedron intersection
@@ -111,7 +111,7 @@ def __triangle_intersect(ray_origin, ray_end, vertex_a, vertex_b, vertex_c):
             return t
     return None
 
-@jit(nopython=True)
+
 def plane_intersect(ray_origin, ray_end, plane_point, plane_normal):
     """
     returns the distance from the origin of the ray to the nearest intersection point

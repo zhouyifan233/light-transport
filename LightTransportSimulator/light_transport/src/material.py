@@ -18,13 +18,17 @@ class Color:
 @numba.experimental.jitclass([
     ('color', Color.class_type.instance_type),
     ('shininess', numba.float64),
-    ('reflection', numba.float64)
+    ('reflection', numba.float64),
+    ('ior', numba.float64),
+    ('is_mirror', numba.boolean)
 ])
 class Material:
-    def __init__(self, color, shininess, reflection):
+    def __init__(self, color, shininess, reflection, ior, is_mirror=False):
         self.color = color
         self.shininess = shininess
         self.reflection = reflection
+        self.is_mirror = is_mirror
+        self.ior = ior
 
 
 # color_type.define(Color.class_type.instance_type)

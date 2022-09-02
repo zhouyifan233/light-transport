@@ -36,16 +36,6 @@ def get_direction(p1, p2):
     return  direction
 
 
-def get_direction(p1, p2):
-    """
-    :param p1: first point
-    :param p2: second point
-    :return: direction vector
-    """
-    direction = (p1-p2)/np.linalg.norm(p1-p2)
-    return  direction
-
-
 def rotate(origin, point, angle):
     """
     :param origin: start point the vector

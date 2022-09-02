@@ -14,6 +14,16 @@ class Light:
 
 
 @numba.experimental.jitclass([
+    ('position', numba.float64[:]),
+    ('focal_length', numba.intp)
+])
+class Camera:
+    def __init__(self, position, focal_length):
+        self.position = position
+        self.focal_length = focal_length
+
+
+@numba.experimental.jitclass([
     ('camera', numba.float64[:]),
     ('lights', numba.types.ListType(Light.class_type.instance_type)),
     # ('lights', numba.types.ListType(numba.float64[::1])),
@@ -25,10 +35,11 @@ class Light:
     ('top', numba.float64),
     ('right', numba.float64),
     ('bottom', numba.float64),
+    ('depth', numba.intp),
     ('image', numba.float64[:,:,:])
 ])
 class Scene:
-    def __init__(self, camera, lights, width=400, height=400, max_depth=3):
+    def __init__(self, camera, lights, width=400, height=400, max_depth=3, depth=5):
         self.camera = camera
         self.lights = lights
         self.width = width
@@ -39,4 +50,5 @@ class Scene:
         self.top = 1/self.aspect_ratio
         self.right = 1
         self.bottom = -1/self.aspect_ratio
+        self.depth = depth
         self.image = np.zeros((height, width, 3), dtype=np.float64)
