@@ -76,6 +76,13 @@ with st.expander("Setup Scene", expanded=setup_expanded):
             o_h = st.number_input('height', value=5)
             mesh = pv.Cone(radius=o_r, center=[oc_x, oc_y, oc_z], height=o_h)
 
+        elif object=='Sphere':
+            o_r = st.number_input('Radius', value=2)
+            oc_x = st.number_input('Center X', value=0)
+            oc_y = st.number_input('Center Y', value=0)
+            oc_z = st.number_input('Center Z', value=0)
+            mesh = pv.Sphere(radius=o_r, center=[oc_x, oc_y, oc_z])
+
         elif object=='Upload File ...':
             uploaded_file = st.file_uploader('Choose a .obj file', type=["obj"], accept_multiple_files=False)
             if uploaded_file is not None:
@@ -126,9 +133,10 @@ with st.expander("Setup Scene", expanded=setup_expanded):
             surface_color = WHITE_2
             left_wall_color = RED
             right_wall_color = GREEN
-            surface_mat = Material(color=surface_color, shininess=90, reflection=0.1, ior=1.460)
-            left_wall_mat = Material(color=left_wall_color, shininess=90, reflection=0.1, ior=1.460)
-            right_wall_mat = Material(color=right_wall_color, shininess=90, reflection=0.1, ior=1.460)
+            surface_mat = Material(color=surface_color, shininess=30, reflection=0.1, ior=1.5210, transmission=1) # calcium sulphate
+            left_wall_mat = Material(color=left_wall_color, shininess=30, reflection=0.1, ior=1.5210, transmission=1)
+            right_wall_mat = Material(color=right_wall_color, shininess=30, reflection=0.1, ior=1.5210, transmission=1)
+            # objects = get_cornell_box(depth, surface_mat, left_wall_mat, right_wall_mat, start_id)
             objects = get_cornell_box(depth, surface_mat, left_wall_mat, right_wall_mat, start_id)
 
         xmin, ymin, zmin = -depth, -depth, depth
@@ -219,7 +227,7 @@ for v in vertices:
                                    vertex_1=np.ascontiguousarray(a, dtype=np.float64),
                                    vertex_2=np.ascontiguousarray(b, dtype=np.float64),
                                    vertex_3=np.ascontiguousarray(c, dtype=np.float64),
-                                   material=BRONZE_MAT)
+                                   material=GLASS_MAT)
     objects.append(triangle)
 
 

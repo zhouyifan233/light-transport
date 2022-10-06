@@ -10,7 +10,7 @@ from .vectors import normalize
 
 
 @numba.njit
-def render(scene, bvh):
+def render_scene(scene, bvh):
     for i, y in enumerate(np.linspace(scene.top, scene.bottom, scene.height)):
         for j, x in enumerate(np.linspace(scene.left, scene.right, scene.width)):
             # screen is on origin
@@ -34,66 +34,85 @@ def render(scene, bvh):
                 intersection = ray.origin + min_distance * ray.direction
 
                 # if nearest_object.type == ShapeOptions.SPHERE.value:
-                #     normal_to_surface = normalize(intersection - nearest_object.center)
-                #     shifted_point = intersection + 1e-5 * normal_to_surface
+                #     surface_normal = normalize(intersection - nearest_object.center)
+                #     shifted_point = intersection + 1e-5 * surface_normal
                 if nearest_object.type == ShapeOptions.TRIANGLEPC.value:
-                    normal_to_surface = nearest_object.normal
-                    shifted_point = intersection
+                    surface_normal = nearest_object.normal
+                    shifted_point = intersection + 1e-5 * surface_normal
                 # elif nearest_object.type == ShapeOptions.PLANE.value:
-                #     normal_to_surface = normalize(nearest_object.normal)
+                #     surface_normal = normalize(nearest_object.normal)
                 #     shifted_point = intersection
                 else:
                     break
 
-                # if np.dot(normal_to_surface, direction) > 0:
-                #     normal_to_surface = -normal_to_surface # normal facing opposite direction, hence flipped
+                ray_inside_object = False
+                if np.dot(surface_normal, ray.direction) > 0:
+                    surface_normal = -surface_normal # normal facing opposite direction, hence flipped
+                    ray_inside_object = True
 
-                # shifted_point = intersection + 1e-5 * normal_to_surface
+                # shifted_point = intersection + 1e-5 * surface_normal
 
                 # intersection_to_light = normalize(scene.lights[0].source - shifted_point)
+                _color = np.zeros((3), dtype=np.float64)
 
-                shadow_ray = Ray(shifted_point, scene.lights[0].source)
-                intersection_to_light = shadow_ray.direction
-                # print(nearest_intersected_object(objects, shifted_point, scene.lights[0].source))
-                _, min_distance = nearest_intersected_object(objects, shadow_ray.origin, shadow_ray.direction)
-                # print("shadow")
-                # intersection_to_light_distance = np.linalg.norm(scene.lights[0].source - intersection)
+                for light in scene.lights:
+                    shadow_ray = Ray(shifted_point, light.source)
+                    intersection_to_light = shadow_ray.direction
+                    # print(nearest_intersected_object(objects, shifted_point, scene.lights[0].source))
+                    _, min_distance = nearest_intersected_object(objects, shadow_ray.origin, shadow_ray.direction, t1=shadow_ray.magnitude)
+                    # print("shadow")
+                    # intersection_to_light_distance = np.linalg.norm(scene.lights[0].source - intersection)
 
-                intersection_to_light_distance = shadow_ray.magnitude
-                is_shadowed = min_distance < intersection_to_light_distance
-                # print("is shadowed")
+                    intersection_to_light_distance = shadow_ray.magnitude
+                    is_shadowed = min_distance < intersection_to_light_distance
+                    # print("is shadowed")
 
-                illumination = np.zeros((3), dtype=np.float64)
+                    illumination = np.zeros((3), dtype=np.float64)
 
-                # ambient
-                illumination += get_ambience(nearest_object.material.color.ambient, scene.lights[0].material.color.ambient)
+                    # ambient
+                    illumination += get_ambience(nearest_object.material.color.ambient, light.material.color.ambient)
 
-                if is_shadowed:
-                    # only ambient color
-                    color += reflection * illumination
-                    break
+                    if is_shadowed:
+                        # only ambient color
+                        _color += reflection * illumination
+                        continue
 
-                # print("ambient")
+                    # print("ambient")
 
-                # diffuse
-                illumination += get_diffuse(nearest_object.material.color.diffuse, scene.lights[0].material.color.diffuse, intersection_to_light, normal_to_surface)
+                    # diffuse
+                    illumination += get_diffuse(nearest_object.material.color.diffuse, light.material.color.diffuse, intersection_to_light, surface_normal)
 
-                # print("diffuse")
+                    # print("diffuse")
 
-                # specular
-                intersection_to_camera = normalize(scene.camera - intersection)
-                viewing_direction = normalize(intersection_to_light + intersection_to_camera)
-                illumination += get_specular(nearest_object.material.color.specular, scene.lights[0].material.color.specular, viewing_direction, normal_to_surface, nearest_object.material.shininess)
+                    # specular
+                    intersection_to_camera = normalize(scene.camera - intersection)
+                    viewing_direction = normalize(intersection_to_light + intersection_to_camera)
+                    illumination += get_specular(nearest_object.material.color.specular, light.material.color.specular, viewing_direction, surface_normal, nearest_object.material.shininess)
 
-                # print("specular")
+                    # print("specular")
 
-                # reflection
-                color += reflection * illumination
+                    # reflection
+                    _color += reflection * illumination
 
-                reflection *= nearest_object.material.reflection
+                color += _color/len(scene.lights)
+
+                if nearest_object.material.is_mirror:
+                    # use mirror reflection
+                    reflection *= nearest_object.material.reflection
+                else:
+                    # use Fresnel
+                    if ray_inside_object:
+                        n1 = nearest_object.material.ior
+                        n2 = 1
+                    else:
+                        n1 = 1
+                    n2 = nearest_object.material.ior
+                    R0 = ((n1 - n2)/(n1 + n2))**2
+                    _angle = np.dot(ray.direction, surface_normal)
+                    reflection *= R0 + (1 - R0) * (1 - np.cos(_angle))**5
 
                 ray.origin = shifted_point
-                ray.direction = reflected_ray(ray.direction, normal_to_surface)
+                ray.direction = reflected_ray(ray.direction, surface_normal)
 
             scene.image[i, j] = np.clip(color, 0, 1)
         print(i+1)
