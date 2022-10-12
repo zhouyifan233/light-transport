@@ -14,6 +14,10 @@ RED = Color(ambient=np.array([0.1, 0, 0], dtype=np.float64),
             diffuse=np.array([0.7, 0, 0], dtype=np.float64),
             specular=np.array([1, 1, 1], dtype=np.float64))
 
+LEFT = Color(ambient=np.array([0.1, 0, 0], dtype=np.float64),
+            diffuse=np.array([10, 2, 2], dtype=np.float64),
+            specular=np.array([1, 1, 1], dtype=np.float64))
+
 PURPLE = Color(ambient=np.array([0.1, 0, 0.1], dtype=np.float64),
             diffuse=np.array([0.7, 0, 0.7], dtype=np.float64),
             specular=np.array([1, 1, 1], dtype=np.float64))
@@ -31,9 +35,17 @@ GREEN = Color(ambient=np.array([0, 0.1, 0], dtype=np.float64),
               diffuse=np.array([0, 0.6, 0], dtype=np.float64),
               specular=np.array([1, 1, 1], dtype=np.float64))
 
+RIGHT = Color(ambient=np.array([0, 0.1, 0], dtype=np.float64),
+              diffuse=np.array([2, 10, 2], dtype=np.float64),
+              specular=np.array([1, 1, 1], dtype=np.float64))
+
 GREY = Color(ambient=np.array([0.1, 0.1, 0.1], dtype=np.float64),
               diffuse=np.array([0.6, 0.6, 0.6], dtype=np.float64),
               specular=np.array([1, 1, 1], dtype=np.float64))
+
+SURFACE = Color(ambient=np.array([0.1, 0.1, 0.1], dtype=np.float64),
+             diffuse=np.array([6, 6, 6], dtype=np.float64),
+             specular=np.array([1, 1, 1], dtype=np.float64))
 
 TURQUOISE = Color(ambient=np.array([0.1, 0.18725, 0.1745], dtype=np.float64),
                   diffuse=np.array([0.396, 0.74151, 0.69102], dtype=np.float64),
@@ -48,4 +60,4 @@ BRONZE_MAT = Material(color=PURPLE, shininess=10, reflection=0.2, ior=1.180)
 GLASS = Color(ambient=np.array([0.0, 0.0, 0.0], dtype=np.float64),
               diffuse=np.array([0.588235, 0.670588, 0.729412], dtype=np.float64),
               specular=np.array([0.9, 0.9, 0.9], dtype=np.float64))
-GLASS_MAT = Material(color=GLASS, shininess=96, reflection=0.2, ior=1.5, transmission=1.0)
+GLASS_MAT = Material(color=GLASS, shininess=96, reflection=0.2, ior=1.5, transmission=1.0, is_diffuse=False, is_mirror=False)

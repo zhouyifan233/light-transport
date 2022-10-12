@@ -20,16 +20,20 @@ class Color:
     ('shininess', numba.float64),
     ('reflection', numba.float64),
     ('ior', numba.float64),
+    ('is_diffuse', numba.boolean),
     ('is_mirror', numba.boolean),
+    ('emission', numba.float64),
     ('transmission', numba.float64)
 ])
 class Material:
-    def __init__(self, color, shininess, reflection, ior, transmission=0.0, is_mirror=False):
+    def __init__(self, color, shininess, reflection, ior, emission=0.0, transmission=0.0, is_diffuse=True, is_mirror=False):
         self.color = color
         self.shininess = shininess
         self.reflection = reflection
+        self.is_diffuse = is_diffuse
         self.is_mirror = is_mirror
         self.ior = ior
+        self.emission = emission
         self.transmission = transmission
 
 

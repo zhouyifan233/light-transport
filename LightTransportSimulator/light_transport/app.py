@@ -131,8 +131,8 @@ with st.expander("Setup Scene", expanded=setup_expanded):
         elif background=='Cornell Box':
             start_id = len(objects)
             surface_color = WHITE_2
-            left_wall_color = RED
-            right_wall_color = GREEN
+            left_wall_color = GREEN
+            right_wall_color = RED
             surface_mat = Material(color=surface_color, shininess=30, reflection=0.1, ior=1.5210, transmission=1) # calcium sulphate
             left_wall_mat = Material(color=left_wall_color, shininess=30, reflection=0.1, ior=1.5210, transmission=1)
             right_wall_mat = Material(color=right_wall_color, shininess=30, reflection=0.1, ior=1.5210, transmission=1)
@@ -151,7 +151,7 @@ with st.expander("Setup Scene", expanded=setup_expanded):
             light_color=WHITE
         light_shininess = st.number_input('Shininess', value=1)
         light_reflection = st.number_input('Reflection', value=0.9)
-        source_mat = Material(color=light_color, shininess=light_shininess, reflection=light_reflection, ior=1.5)
+        source_mat = Material(color=light_color, shininess=light_shininess, reflection=light_reflection, ior=1.5, emission=10000)
         if l_source == 'Point':
             l_x = lcol_1.number_input('Light X', value=3.0)
             l_y = lcol_2.number_input('Light Y', value=5.0)
