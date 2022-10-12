@@ -155,7 +155,7 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
 
 @numba.njit(parallel=True)
-def render_scene(scene, bvh):
+def render_scene(scene, bvh, number_of_samples=10):
     top_bottom = np.linspace(scene.top, scene.bottom, scene.height)
     left_right = np.linspace(scene.left, scene.right, scene.width)
     pix_count = 0
@@ -163,7 +163,6 @@ def render_scene(scene, bvh):
         y = top_bottom[i]
         for j in numba.prange(scene.width):
             color = np.zeros((3), dtype=np.float64)
-            number_of_samples = 10
             for _sample in range(number_of_samples):
                 x = left_right[j]
                 # screen is on origin

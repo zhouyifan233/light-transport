@@ -139,9 +139,6 @@ with st.expander("Setup Scene", expanded=setup_expanded):
             # objects = get_cornell_box(depth, surface_mat, left_wall_mat, right_wall_mat, start_id)
             objects = get_cornell_box(depth, surface_mat, left_wall_mat, right_wall_mat, start_id)
 
-        xmin, ymin, zmin = -depth, -depth, depth
-        xmax, ymax, zmax = depth, depth, -depth
-
 
     with col3:
         # lights & camera
@@ -238,8 +235,8 @@ if render:
     # render scene
     setup_expanded=False
     # enclose the scene in a box
-    min_point=np.array([xmin, ymin, zmin], dtype=np.float64)
-    max_point=np.array([xmax, ymax, zmax], dtype=np.float64)
+    min_point=np.array([-depth, -depth, depth], dtype=np.float64)
+    max_point=np.array([depth, depth, -depth], dtype=np.float64)
     box = AABB(min_point=min_point, max_point=max_point)
     # create a BVH tree
     bvh = BVH()
@@ -247,7 +244,7 @@ if render:
     with st.expander("Scene", expanded=True):
         with st.spinner('Loading...'):
             start = time.time()
-            image = render_scene(scene, bvh.top)
+            image = render_scene(scene, bvh.top, number_of_samples=10)
             end = time.time()
 
         logs, plots = st.columns(2)
