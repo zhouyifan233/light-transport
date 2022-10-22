@@ -59,15 +59,13 @@ def hit_object(bvh, ray_origin, ray_direction):
 
 
 @numba.njit
-def create_orthonormal_system(normal_at_intersection):
-    if abs(normal_at_intersection[0]) > abs(normal_at_intersection[1]):
-        inv_len = 1.0 / math.sqrt(normal_at_intersection[0]*normal_at_intersection[0] + normal_at_intersection[2]*normal_at_intersection[2])
-        v2 = np.array([-normal_at_intersection[2] * inv_len, 0.0, normal_at_intersection[0] * inv_len], dtype=np.float64)
+def create_orthonormal_system(normal):
+    if abs(normal[0]) > abs(normal[1]):
+        v2 = np.array([normal[2], 0.0, -normal[0]], dtype=np.float64) / np.sqrt(np.array([normal[0] * normal[0] + normal[2] * normal[2]], dtype=np.float64))
     else:
-        inv_len = 1.0 / math.sqrt(normal_at_intersection[1]*normal_at_intersection[1] + normal_at_intersection[2]*normal_at_intersection[2])
-        v2 = np.array([0.0, normal_at_intersection[2] * inv_len, -normal_at_intersection[1] * inv_len], dtype=np.float64)
+        v2 = np.array([0.0, -normal[2], normal[1]], dtype=np.float64) / np.sqrt(np.array([normal[1] * normal[1] + normal[2] * normal[2]], dtype=np.float64))
 
-    v3 = np.cross(normal_at_intersection[:-1], v2)
+    v3 = np.cross(normal[:-1], v2)
 
     return v2, v3
 
