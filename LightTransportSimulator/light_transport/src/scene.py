@@ -5,12 +5,16 @@ from .material import Material
 
 @numba.experimental.jitclass([
     ('source', numba.float64[:]),
-    ('material', Material.class_type.instance_type)
+    ('material', Material.class_type.instance_type),
+    ('normal', numba.float64[:]),
+    ('total_area', numba.float64)
 ])
 class Light:
-    def __init__(self, source, material):
+    def __init__(self, source, material, normal, total_area):
         self.source = source
         self.material = material
+        self.normal = normal
+        self.total_area = total_area
 
 
 @numba.experimental.jitclass([

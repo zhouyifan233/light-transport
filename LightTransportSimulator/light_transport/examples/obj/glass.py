@@ -3,7 +3,7 @@ import numpy as np
 import numba
 
 from LightTransportSimulator.light_transport.src.material import Material
-from LightTransportSimulator.light_transport.src.colors import *
+from LightTransportSimulator.light_transport.src.constants import *
 from LightTransportSimulator.light_transport.src.primitives import PreComputedTriangle
 
 

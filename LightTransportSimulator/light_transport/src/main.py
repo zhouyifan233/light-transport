@@ -9,7 +9,7 @@ from .render import render_rt
 from .scene import Light, Scene
 from .material import Color, Material
 from .cornell_box import get_cornell_box
-from .colors import *
+from .constants import *
 
 
 if __name__ == '__main__':

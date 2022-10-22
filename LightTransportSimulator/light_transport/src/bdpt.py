@@ -1,18 +1,50 @@
 import math
 import logging
 import numba
+import numpy as np
 
 from .brdf import *
+from .bvh import traverse_bvh
 from .ray_old import Ray
-from .utils import random_unit_vector_from_hemisphere, hit_object
+from .utils import hit_object, random_unit_vector_from_hemisphere, nearest_intersected_object
 from .vectors import normalize
+
+
+@numba.njit
+def cast_shadow_ray(scene, bvh, intersected_object, intersection_point):
+    light_contrib = 0
+    for light in scene.lights:
+        shadow_ray_direction = normalize(light.source - intersection_point)
+        shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
+        shadow_ray = Ray(intersection_point, shadow_ray_direction)
+
+        _objects = traverse_bvh(bvh, shadow_ray.origin, shadow_ray.direction)
+        _, min_distance = nearest_intersected_object(_objects, shadow_ray.origin, shadow_ray.direction, t1=shadow_ray_magnitude)
+
+        if min_distance is None:
+            break
+
+        is_shadowed = min_distance < shadow_ray_magnitude
+
+        if is_shadowed:
+            # no intensity
+            continue
+        else:
+            cos_phi = np.dot(shadow_ray_direction, -light.normal)
+            intensity = light.material.emission * light.total_area / np.square(shadow_ray_direction)
+            light_contrib += light.material.color.diffuse * intensity * max(cos_phi, 0.0)
+
+    total_light_contrib = light_contrib/len(scene.lights)
+    albedo = intersected_object.material.color.diffuse/np.pi
+    intersection_color = albedo * total_light_contrib
+    return intersection_color
+
 
 
 @numba.njit
 def trace_path(scene, bvh, ray_origin, ray_direction, depth):
     # set the defaults
     color = np.zeros((3), dtype=np.float64)
-    reflection = 1.0
 
     if depth>scene.max_depth:
         # reached max bounce
@@ -34,19 +66,20 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
     ray_inside_object = False
     if np.dot(surface_normal, ray_direction) > 0:
-        # print('Flipped')
         surface_normal = -surface_normal # normal facing opposite direction, hence flipped
         ray_inside_object = True
-    # else:
-    #     print('Not Flipped')
 
     # color += nearest_object.material.color.ambient # add ambient color
 
     if nearest_object.is_light:
-        color += nearest_object.material.emission * r_r
+        color += nearest_object.material.emission * nearest_object.material.color * r_r
         return color
 
     new_ray_origin = intersection + 1e-5 * surface_normal
+
+    # direct lighting
+    direct_light_contrib = cast_shadow_ray(scene, bvh, nearest_object, new_ray_origin)
+
 
     if nearest_object.material.is_diffuse:
         # diffuse color

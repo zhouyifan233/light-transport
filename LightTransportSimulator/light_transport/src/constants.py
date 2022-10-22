@@ -2,6 +2,13 @@ import numpy as np
 
 from .material import Color, Material
 
+inv_pi = 1/np.pi
+inv_2_pi = 0.5*inv_pi
+pi_over_2 = np.pi/2
+pi_over_4 = 0.5*pi_over_2
+EPSILON = 0.000001
+
+
 WHITE = Color(ambient=np.array([1, 1, 1], dtype=np.float64),
               diffuse=np.array([1, 1, 1], dtype=np.float64),
               specular=np.array([1, 1, 1], dtype=np.float64))
@@ -55,7 +62,7 @@ TURQUOISE_MAT = Material(color=TURQUOISE, shininess=0.1, reflection=2, ior=1.65)
 BRONZE = Color(ambient=np.array([0.2125, 0.1275, 0.054], dtype=np.float64),
                   diffuse=np.array([0.714, 0.4284, 0.18144], dtype=np.float64),
                   specular=np.array([0.393548, 0.271906, 0.166721], dtype=np.float64))
-BRONZE_MAT = Material(color=PURPLE, shininess=10, reflection=0.2, ior=1.180)
+BRONZE_MAT = Material(color=PURPLE, shininess=10, reflection=0.75, ior=1.180, transmission=1.0, is_diffuse=False, is_mirror=True)
 
 GLASS = Color(ambient=np.array([0.0, 0.0, 0.0], dtype=np.float64),
               diffuse=np.array([0.588235, 0.670588, 0.729412], dtype=np.float64),

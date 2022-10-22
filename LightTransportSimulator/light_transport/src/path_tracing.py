@@ -1,18 +1,49 @@
 import math
 import logging
 import numba
+import numpy as np
 
 from .brdf import *
+from .bvh import traverse_bvh
 from .ray_old import Ray
-from .utils import random_unit_vector_from_hemisphere, hit_object
-from .vectors import normalize
+from .utils import cosine_weighted_hemisphere_sampling, uniform_hemisphere_sampling
+from .utils import hit_object, nearest_intersected_object
+from .vectors import normalize, get_direction
+
 
 
 @numba.njit
-def trace_path(scene, bvh, ray_origin, ray_direction, depth):
+def cast_shadow_ray(scene, bvh, intersected_object, intersection_point, intersection_normal):
+    light_contrib = np.zeros((3), dtype=np.float64)
+    for light in scene.lights:
+        shadow_ray_direction = normalize(light.source - intersection_point)
+        shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
+        # shadow_ray = Ray(intersection_point, shadow_ray_direction)
+
+        _objects = traverse_bvh(bvh, intersection_point, shadow_ray_direction)
+        _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
+
+        if min_distance is None:
+            break
+
+        visible = min_distance >= shadow_ray_magnitude
+        if visible:
+            brdf = light.material.emission * light.material.color.diffuse
+            cos_theta = np.dot(intersection_normal, shadow_ray_direction)
+            cos_phi = np.dot(light.normal, -shadow_ray_direction)
+            geometry_term = np.abs(cos_theta * cos_phi)/(shadow_ray_magnitude * shadow_ray_magnitude)
+            light_contrib += brdf * geometry_term * light.total_area
+
+    light_contrib = light_contrib/len(scene.lights)
+
+    return light_contrib
+
+
+
+@numba.njit
+def trace_path(scene, bvh, ray_origin, ray_direction, depth, weight=1):
     # set the defaults
     color = np.zeros((3), dtype=np.float64)
-    reflection = 1.0
 
     if depth>scene.max_depth:
         # reached max bounce
@@ -34,41 +65,36 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
     ray_inside_object = False
     if np.dot(surface_normal, ray_direction) > 0:
-        # print('Flipped')
         surface_normal = -surface_normal # normal facing opposite direction, hence flipped
         ray_inside_object = True
-    # else:
-    #     print('Not Flipped')
 
     # color += nearest_object.material.color.ambient # add ambient color
 
     if nearest_object.is_light:
-        color += nearest_object.material.emission * r_r
+        color += (nearest_object.material.emission * nearest_object.material.color.diffuse) * r_r * weight
         return color
 
     new_ray_origin = intersection + 1e-5 * surface_normal
 
     if nearest_object.material.is_diffuse:
-        # diffuse color
-        new_ray_direction = random_unit_vector_from_hemisphere(surface_normal)
+        # direct lighting
+        direct_light = cast_shadow_ray(scene, bvh, nearest_object, new_ray_origin, surface_normal) * r_r * weight
 
-        # _prob = 1/(2*np.pi)
+        # indirect lighting
+        new_ray_direction, _pdf = uniform_hemisphere_sampling(surface_normal)
         cos_theta = np.dot(new_ray_direction, surface_normal)
+        indirect_light = trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1, weight) * cos_theta / _pdf
 
-        incoming = trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1)
-
-        color += (nearest_object.material.color.diffuse*incoming)*cos_theta*2*r_r
+        albedo = nearest_object.material.color.diffuse/np.pi
+        color +=  (direct_light+indirect_light) * albedo * r_r * weight
 
     elif nearest_object.material.is_mirror:
-        # specular color
+        # mirror reflection
         new_ray_direction = normalize(reflected_ray(ray_direction, surface_normal))
-        cos_theta = np.dot(ray_direction, surface_normal)
-        reflection *= nearest_object.material.reflection
-        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1)*reflection*r_r
+        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1, weight) * r_r * weight
 
-    else:
-        # compute reflection and refraction
-        # use Fresnel
+    elif nearest_object.material.transmission>0:
+        # reflection and refraction
         if ray_inside_object:
             n1 = nearest_object.material.ior
             n2 = 1
@@ -78,11 +104,11 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
         R0 = ((n1 - n2)/(n1 + n2))**2
         cos_theta = np.dot(ray_direction, surface_normal)
-        reflection *= R0 + (1 - R0) * (1 - np.cos(cos_theta))**5
+        reflection_prob = R0 + (1 - R0) * (1 - np.cos(cos_theta))**5
 
         # reflection
         new_ray_direction = normalize(reflected_ray(ray_direction, surface_normal))
-        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1)*reflection*r_r
+        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1, weight)*reflection_prob*r_r*weight
 
         Nr = nearest_object.material.ior
         if np.dot(ray_direction, surface_normal)>0:
@@ -98,7 +124,9 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
             transmit_direction = normalize(transmit_direction)
             transmit_color = trace_path(scene, bvh, transmit_origin, transmit_direction, depth+1)
 
-            color += transmit_color*(1 - reflection)*nearest_object.material.transmission*r_r
+            color += transmit_color*(1 - reflection_prob)*nearest_object.material.transmission*r_r*weight
+
+    weight *= nearest_object.material.reflection
 
     return color
 

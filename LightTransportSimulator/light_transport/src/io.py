@@ -3,7 +3,7 @@ from pathlib import Path
 import pywavefront
 import numpy as np
 
-from .colors import RED
+from .constants import RED
 from .material import Material
 from .primitives import Triangle
 

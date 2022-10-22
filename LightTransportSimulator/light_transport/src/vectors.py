@@ -26,6 +26,7 @@ def angle_between(v1, v2):
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
+@numba.njit
 def get_direction(p1, p2):
     """
     :param p1: first point

@@ -6,7 +6,7 @@ import numpy as np
 from .brdf import *
 from .bvh import traverse_bvh
 from .primitives import ShapeOptions
-from .ray import Ray
+from .ray_old import Ray
 from .utils import nearest_intersected_object
 from .vectors import normalize
 

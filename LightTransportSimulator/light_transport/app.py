@@ -14,7 +14,7 @@ from src.bvh import BVH
 from src.cornell_box import get_floor, get_cornell_box
 from src.primitives import PreComputedTriangle, AABB
 from src.scene import Light, Scene
-from src.colors import *
+from src.constants import *
 from src.render import render_scene
 
 
