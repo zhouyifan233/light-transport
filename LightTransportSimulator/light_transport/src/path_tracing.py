@@ -79,11 +79,11 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth, weight=1):
 
     if nearest_object.material.is_diffuse:
         # direct lighting
-        direct_light = cast_shadow_ray(scene, bvh, nearest_object, new_ray_origin, surface_normal) * r_r * weight
+        direct_light = cast_shadow_ray(scene, bvh, nearest_object, new_ray_origin, surface_normal)
 
         # indirect lighting
         indirect_light = np.zeros((3), dtype=np.float64)
-        number_of_samples=100
+        number_of_samples=10
         for n in range(number_of_samples):
             # random uniform samples
             r1 = np.random.rand()
@@ -107,8 +107,8 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth, weight=1):
 
             indirect_ray_origin = intersection + 1e-5 * indirect_ray_direction
 
-            # cos_theta = np.dot(indirect_ray_direction, surface_normal)
-            indirect_light += r1*trace_path(scene, bvh, indirect_ray_origin, indirect_ray_direction, depth+1, weight)/pdf
+            cos_theta = np.dot(indirect_ray_direction, surface_normal)
+            indirect_light += cos_theta*trace_path(scene, bvh, indirect_ray_origin, indirect_ray_direction, depth+1, weight)/pdf
 
         indirect_light = indirect_light/number_of_samples
 
@@ -152,7 +152,7 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth, weight=1):
 
             color += transmit_color*(1 - reflection_prob)*nearest_object.material.transmission*r_r*weight
 
-    weight *= nearest_object.material.reflection
+    # weight *= nearest_object.material.reflection
 
     return color
 
