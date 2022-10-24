@@ -73,7 +73,7 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
     # color += nearest_object.material.color.ambient # add ambient color
 
-    if nearest_object.is_light:
+    if nearest_object.is_light and depth==0:
         color += nearest_object.material.emission * r_r
         return color
 
