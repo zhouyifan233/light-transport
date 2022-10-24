@@ -3,9 +3,40 @@ import logging
 import numba
 
 from .brdf import *
+from .bvh import traverse_bvh
+from .constants import inv_pi
 from .ray_old import Ray
-from .utils import random_unit_vector_from_hemisphere, hit_object
+from .utils import uniform_hemisphere_sampling, hit_object, nearest_intersected_object
 from .vectors import normalize
+
+
+
+@numba.njit
+def cast_shadow_ray(scene, bvh, intersected_object, intersection_point, intersection_normal):
+    light_contrib = np.zeros((3), dtype=np.float64)
+    for light in scene.lights:
+        shadow_ray_direction = normalize(light.source - intersection_point)
+        shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
+        # shadow_ray = Ray(intersection_point, shadow_ray_direction)
+
+        _objects = traverse_bvh(bvh, intersection_point, shadow_ray_direction)
+        _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
+
+        if min_distance is None:
+            break
+
+        visible = min_distance >= shadow_ray_magnitude
+        if visible:
+            brdf = (light.material.emission * light.material.color.diffuse) * (intersected_object.material.color.diffuse * inv_pi)
+            cos_theta = np.dot(intersection_normal, shadow_ray_direction)
+            cos_phi = np.dot(light.normal, -shadow_ray_direction)
+            geometry_term = np.abs(cos_theta * cos_phi)/(shadow_ray_magnitude * shadow_ray_magnitude)
+            light_contrib += brdf * geometry_term * light.total_area
+
+    light_contrib = light_contrib/len(scene.lights)
+
+    return light_contrib
+
 
 
 @numba.njit
@@ -50,7 +81,11 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
     if nearest_object.material.is_diffuse:
         # diffuse color
-        new_ray_direction = random_unit_vector_from_hemisphere(surface_normal)
+        # direct light
+        color += cast_shadow_ray(scene, bvh, nearest_object, new_ray_origin, surface_normal)
+
+        # indirect light
+        new_ray_direction, _pdf = uniform_hemisphere_sampling(surface_normal)
 
         # _prob = 1/(2*np.pi)
         cos_theta = np.dot(new_ray_direction, surface_normal)
