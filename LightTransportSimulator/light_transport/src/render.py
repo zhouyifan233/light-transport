@@ -40,10 +40,10 @@ def cast_shadow_ray(scene, bvh, intersected_object, intersection_point, intersec
 
 
 @numba.njit
-def trace_path(scene, bvh, ray_origin, ray_direction, depth):
+def trace_path(scene, bvh, ray_origin, ray_direction, depth, number_of_samples):
     # set the defaults
     color = np.zeros((3), dtype=np.float64)
-    reflection = 1.0
+    # reflection = 1.0
 
     if depth>scene.max_depth:
         # reached max bounce
@@ -85,21 +85,26 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
         color += cast_shadow_ray(scene, bvh, nearest_object, new_ray_origin, surface_normal)
 
         # indirect light
-        new_ray_direction, _pdf = uniform_hemisphere_sampling(surface_normal)
+        indirect_light = np.zeros((3), dtype=np.float64)
+        # number_of_samples=240
+        for n in range(number_of_samples):
+            new_ray_direction, _pdf = uniform_hemisphere_sampling(surface_normal)
 
-        # _prob = 1/(2*np.pi)
-        cos_theta = np.dot(new_ray_direction, surface_normal)
+            # _prob = 1/(2*np.pi)
+            cos_theta = np.dot(new_ray_direction, surface_normal)
 
-        incoming = trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1)
+            incoming = trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1, number_of_samples)
 
-        color += (nearest_object.material.color.diffuse*incoming)*cos_theta*2*r_r
+            indirect_light += (nearest_object.material.color.diffuse*incoming)*cos_theta*2*r_r
+
+        color += indirect_light/number_of_samples
 
     elif nearest_object.material.is_mirror:
         # specular color
         new_ray_direction = normalize(reflected_ray(ray_direction, surface_normal))
         cos_theta = np.dot(ray_direction, surface_normal)
-        reflection *= nearest_object.material.reflection
-        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1)*reflection*r_r
+        reflection = nearest_object.material.reflection
+        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1, number_of_samples)*reflection*r_r
 
     else:
         # compute reflection and refraction
@@ -113,11 +118,11 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
         R0 = ((n1 - n2)/(n1 + n2))**2
         cos_theta = np.dot(ray_direction, surface_normal)
-        reflection *= R0 + (1 - R0) * (1 - np.cos(cos_theta))**5
+        reflection_prob = R0 + (1 - R0) * (1 - np.cos(cos_theta))**5
 
         # reflection
         new_ray_direction = normalize(reflected_ray(ray_direction, surface_normal))
-        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1)*reflection*r_r
+        color += trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1, number_of_samples)*reflection_prob*r_r
 
         Nr = nearest_object.material.ior
         if np.dot(ray_direction, surface_normal)>0:
@@ -131,9 +136,9 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
             transmit_direction = (ray_direction * Nr) + (surface_normal * (Nr * cos_theta - math.sqrt(_sqrt)))
             transmit_direction = normalize(transmit_direction)
-            transmit_color = trace_path(scene, bvh, transmit_origin, transmit_direction, depth+1)
+            transmit_color = trace_path(scene, bvh, transmit_origin, transmit_direction, depth+1, number_of_samples)
 
-            color += transmit_color*(1 - reflection)*nearest_object.material.transmission*r_r
+            color += transmit_color*(1 - reflection_prob)*nearest_object.material.transmission*r_r
 
     return color
 
@@ -147,17 +152,17 @@ def render_scene(scene, bvh, number_of_samples=10):
         y = top_bottom[i]
         for j in numba.prange(scene.width):
             color = np.zeros((3), dtype=np.float64)
-            for _sample in range(number_of_samples):
-                x = left_right[j]
-                # screen is on origin
-                pixel = np.array([x, y, scene.depth], dtype=np.float64)
-                origin = scene.camera
-                end = pixel
-                # direction = normalize(end - origin)
-                ray = Ray(origin, end)
-                # for k in range(scene.max_depth):
-                color += trace_path(scene, bvh, ray.origin, ray.direction, 0)
-            color = color/number_of_samples
+            # for _sample in range(number_of_samples):
+            x = left_right[j]
+            # screen is on origin
+            pixel = np.array([x, y, scene.depth], dtype=np.float64)
+            origin = scene.camera
+            end = pixel
+            # direction = normalize(end - origin)
+            ray = Ray(origin, end)
+            # for k in range(scene.max_depth):
+            color += trace_path(scene, bvh, ray.origin, ray.direction, 0, number_of_samples)
+            # color = color/number_of_samples
             scene.image[i, j] = np.clip(color, 0, 1)
         pix_count+=1
         print((pix_count/scene.height)*100)
