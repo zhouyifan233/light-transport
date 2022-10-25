@@ -89,7 +89,7 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth, weight=1):
             r1 = np.random.rand()
             r2 = np.random.rand()
 
-            theta = math.sqrt(max((0.0, 1.0-r1**2)))
+            theta = np.sqrt(max((0.0, 1.0-r1**2)))
             phi = 2 * np.pi * r2
 
             _point = [theta * np.cos(phi), theta * np.sin(phi), r1]
@@ -146,7 +146,7 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth, weight=1):
         if _sqrt > 0: # no transmitted ray if negative
             transmit_origin = intersection + (-0.001 * surface_normal)
 
-            transmit_direction = (ray_direction * Nr) + (surface_normal * (Nr * cos_theta - math.sqrt(_sqrt)))
+            transmit_direction = (ray_direction * Nr) + (surface_normal * (Nr * cos_theta - np.sqrt(_sqrt)))
             transmit_direction = normalize(transmit_direction)
             transmit_color = trace_path(scene, bvh, transmit_origin, transmit_direction, depth+1)
 

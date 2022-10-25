@@ -77,7 +77,7 @@ def uniform_hemisphere_sampling(normal_at_intersection):
     r1 = np.random.rand()
     r2 = np.random.rand()
 
-    theta = math.sqrt(max((0.0, 1.0-r1**2)))
+    theta = np.sqrt(max((0.0, 1.0-r1**2)))
     phi = 2 * np.pi * r2
 
     _point = [theta * np.cos(phi), theta * np.sin(phi), r1]
@@ -85,11 +85,16 @@ def uniform_hemisphere_sampling(normal_at_intersection):
 
     v2, v3 = create_orthonormal_system(normal_at_intersection)
 
-    rot_x = np.dot(np.array([v2[0], v3[0], normal_at_intersection[0]], dtype=np.float64), random_point)
-    rot_y = np.dot(np.array([v2[1], v3[1], normal_at_intersection[1]], dtype=np.float64), random_point)
-    rot_z = np.dot(np.array([v2[2], v3[2], normal_at_intersection[2]], dtype=np.float64), random_point)
+    # rot_x = np.dot(np.array([v2[0], v3[0], normal_at_intersection[0]], dtype=np.float64), random_point)
+    # rot_y = np.dot(np.array([v2[1], v3[1], normal_at_intersection[1]], dtype=np.float64), random_point)
+    # rot_z = np.dot(np.array([v2[2], v3[2], normal_at_intersection[2]], dtype=np.float64), random_point)
+    #
+    # global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
 
-    global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
+    global_ray_dir = np.array([random_point[0] * v3[0] + random_point[1] * normal_at_intersection[0] + random_point[2] * v2[0],
+                               random_point[0] * v3[1] + random_point[1] * normal_at_intersection[1] + random_point[2] * v2[1],
+                               random_point[0] * v3[2] + random_point[1] * normal_at_intersection[2] + random_point[2] * v2[2],
+                                       0], dtype=np.float64)
 
     pdf = inv_2_pi
 
@@ -114,21 +119,55 @@ def concentric_sample_disk(u):
 
 
 @numba.njit
-def cosine_weighted_hemisphere_sampling(normal_at_intersection):
+def _cosine_weighted_hemisphere_sampling(normal_at_intersection):
     # random uniform samples
     r1 = np.random.rand()
     d = concentric_sample_disk(r1)
-    z = math.sqrt(max(0, 1 - d[0]**2 - d[1]**2))
+    z = np.sqrt(max(0, 1 - d[0]**2 - d[1]**2))
 
     random_point = np.array([d[0], d[1], z], dtype=np.float64)
 
     v2, v3 = create_orthonormal_system(normal_at_intersection)
 
-    rot_x = np.dot(np.array([v2[0], v3[0], normal_at_intersection[0]], dtype=np.float64), random_point)
-    rot_y = np.dot(np.array([v2[1], v3[1], normal_at_intersection[1]], dtype=np.float64), random_point)
-    rot_z = np.dot(np.array([v2[2], v3[2], normal_at_intersection[2]], dtype=np.float64), random_point)
+    # rot_x = np.dot(np.array([v2[0], v3[0], normal_at_intersection[0]], dtype=np.float64), random_point)
+    # rot_y = np.dot(np.array([v2[1], v3[1], normal_at_intersection[1]], dtype=np.float64), random_point)
+    # rot_z = np.dot(np.array([v2[2], v3[2], normal_at_intersection[2]], dtype=np.float64), random_point)
+    #
+    # global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
 
-    global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
+    global_ray_dir = np.array([random_point[0] * v3[0] + random_point[1] * normal_at_intersection[0] + random_point[2] * v2[0],
+                               random_point[0] * v3[1] + random_point[1] * normal_at_intersection[1] + random_point[2] * v2[1],
+                               random_point[0] * v3[2] + random_point[1] * normal_at_intersection[2] + random_point[2] * v2[2],
+                               0], dtype=np.float64)
+
+    pdf = np.dot(global_ray_dir, normal_at_intersection)/np.pi
+
+    return global_ray_dir, pdf
+
+
+@numba.njit
+def cosine_weighted_hemisphere_sampling(normal_at_intersection):
+    # random uniform samples
+    r1 = np.random.rand()
+    r2 = np.random.rand()
+
+    phi = 2*np.pi*r2
+    theta = np.arccos(np.sqrt(r1))
+
+    random_point = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)], dtype=np.float64)
+
+    v2, v3 = create_orthonormal_system(normal_at_intersection)
+
+    # rot_x = np.dot(np.array([v2[0], v3[0], normal_at_intersection[0]], dtype=np.float64), random_point)
+    # rot_y = np.dot(np.array([v2[1], v3[1], normal_at_intersection[1]], dtype=np.float64), random_point)
+    # rot_z = np.dot(np.array([v2[2], v3[2], normal_at_intersection[2]], dtype=np.float64), random_point)
+    #
+    # global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
+
+    global_ray_dir = np.array([random_point[0] * v3[0] + random_point[1] * normal_at_intersection[0] + random_point[2] * v2[0],
+                               random_point[0] * v3[1] + random_point[1] * normal_at_intersection[1] + random_point[2] * v2[1],
+                               random_point[0] * v3[2] + random_point[1] * normal_at_intersection[2] + random_point[2] * v2[2],
+                               0], dtype=np.float64)
 
     pdf = np.dot(global_ray_dir, normal_at_intersection)/np.pi
 

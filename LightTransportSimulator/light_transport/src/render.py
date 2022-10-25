@@ -6,7 +6,8 @@ from .brdf import *
 from .bvh import traverse_bvh
 from .constants import inv_pi
 from .ray_old import Ray
-from .utils import uniform_hemisphere_sampling, hit_object, nearest_intersected_object
+from .utils import uniform_hemisphere_sampling, hit_object, nearest_intersected_object, \
+    cosine_weighted_hemisphere_sampling
 from .vectors import normalize
 
 
@@ -85,14 +86,15 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
         color += cast_shadow_ray(scene, bvh, nearest_object, new_ray_origin, surface_normal)
 
         # indirect light
-        new_ray_direction, _pdf = uniform_hemisphere_sampling(surface_normal)
+        indirect_ray_direction, _pdf = cosine_weighted_hemisphere_sampling(surface_normal)
+        indirect_ray_origin = intersection + 1e-5 * indirect_ray_direction
 
         # _prob = 1/(2*np.pi)
-        cos_theta = np.dot(new_ray_direction, surface_normal)
+        # cos_theta = np.dot(indirect_ray_direction, surface_normal)
 
-        incoming = trace_path(scene, bvh, new_ray_origin, new_ray_direction, depth+1)
+        incoming = trace_path(scene, bvh, indirect_ray_origin, indirect_ray_direction, depth+1)
 
-        color += (nearest_object.material.color.diffuse*incoming)*cos_theta*2*r_r
+        color += (nearest_object.material.color.diffuse*incoming)*r_r # *cos_theta*2
 
     elif nearest_object.material.is_mirror:
         # specular color
@@ -129,7 +131,7 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
         if _sqrt > 0: # no transmitted ray if negative
             transmit_origin = intersection + (-0.001 * surface_normal)
 
-            transmit_direction = (ray_direction * Nr) + (surface_normal * (Nr * cos_theta - math.sqrt(_sqrt)))
+            transmit_direction = (ray_direction * Nr) + (surface_normal * (Nr * cos_theta - np.sqrt(_sqrt)))
             transmit_direction = normalize(transmit_direction)
             transmit_color = trace_path(scene, bvh, transmit_origin, transmit_direction, depth+1)
 
