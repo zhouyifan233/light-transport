@@ -90,11 +90,11 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
         indirect_ray_origin = intersection + 1e-5 * indirect_ray_direction
 
         # _prob = 1/(2*np.pi)
-        # cos_theta = np.dot(indirect_ray_direction, surface_normal)
+        cos_theta = np.dot(indirect_ray_direction, surface_normal)
 
         incoming = trace_path(scene, bvh, indirect_ray_origin, indirect_ray_direction, depth+1)
 
-        color += (nearest_object.material.color.diffuse*incoming)*r_r # *cos_theta*2
+        color += (nearest_object.material.color.diffuse*incoming)*r_r*cos_theta/_pdf
 
     elif nearest_object.material.is_mirror:
         # specular color

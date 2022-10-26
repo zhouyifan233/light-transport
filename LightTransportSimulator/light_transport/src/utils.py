@@ -4,7 +4,7 @@ import numpy as np
 import numba
 
 from .bvh import traverse_bvh
-from .constants import inv_2_pi, pi_over_4, pi_over_2
+from .constants import inv_2_pi, pi_over_4, pi_over_2, inv_pi
 from .intersects import sphere_intersect, triangle_intersect, plane_intersect, __triangle_intersect, pc_triangle_intersect
 from .primitives import Triangle, Sphere, Plane, ShapeOptions
 
@@ -119,7 +119,7 @@ def concentric_sample_disk(u):
 
 
 @numba.njit
-def _cosine_weighted_hemisphere_sampling(normal_at_intersection):
+def cosine_weighted_hemisphere_sampling(normal_at_intersection):
     # random uniform samples
     r1 = np.random.rand()
     d = concentric_sample_disk(r1)
@@ -140,13 +140,13 @@ def _cosine_weighted_hemisphere_sampling(normal_at_intersection):
                                random_point[0] * v3[2] + random_point[1] * normal_at_intersection[2] + random_point[2] * v2[2],
                                0], dtype=np.float64)
 
-    pdf = np.dot(global_ray_dir, normal_at_intersection)/np.pi
+    pdf = abs(z)*inv_pi
 
     return global_ray_dir, pdf
 
 
 @numba.njit
-def cosine_weighted_hemisphere_sampling(normal_at_intersection):
+def _cosine_weighted_hemisphere_sampling(normal_at_intersection):
     # random uniform samples
     r1 = np.random.rand()
     r2 = np.random.rand()
