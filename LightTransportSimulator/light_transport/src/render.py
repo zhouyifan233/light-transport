@@ -94,7 +94,9 @@ def trace_path(scene, bvh, ray_origin, ray_direction, depth):
 
         incoming = trace_path(scene, bvh, indirect_ray_origin, indirect_ray_direction, depth+1)
 
-        color += (nearest_object.material.color.diffuse*incoming)*r_r*cos_theta/_pdf
+        albedo = nearest_object.material.color.diffuse * inv_pi
+
+        color += (albedo*incoming)*r_r*cos_theta/_pdf
 
     elif nearest_object.material.is_mirror:
         # specular color
