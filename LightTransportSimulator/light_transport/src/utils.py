@@ -140,7 +140,7 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection):
                                random_point[0] * v3[2] + random_point[1] * normal_at_intersection[2] + random_point[2] * v2[2],
                                0], dtype=np.float64)
 
-    pdf = abs(z)*inv_pi
+    pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
 
     return global_ray_dir, pdf
 
