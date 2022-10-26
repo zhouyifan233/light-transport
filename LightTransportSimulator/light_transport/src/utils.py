@@ -61,9 +61,9 @@ def hit_object(bvh, ray_origin, ray_direction):
 @numba.njit
 def create_orthonormal_system(normal):
     if abs(normal[0]) > abs(normal[1]):
-        v2 = np.array([normal[2], 0.0, -normal[0]], dtype=np.float64) / np.sqrt(np.array([normal[0] * normal[0] + normal[2] * normal[2]], dtype=np.float64))
+        v2 = np.array([-normal[2], 0.0, normal[0]], dtype=np.float64) / np.sqrt(np.array([normal[0] * normal[0] + normal[2] * normal[2]], dtype=np.float64))
     else:
-        v2 = np.array([0.0, -normal[2], normal[1]], dtype=np.float64) / np.sqrt(np.array([normal[1] * normal[1] + normal[2] * normal[2]], dtype=np.float64))
+        v2 = np.array([0.0, normal[2], -normal[1]], dtype=np.float64) / np.sqrt(np.array([normal[1] * normal[1] + normal[2] * normal[2]], dtype=np.float64))
 
     v3 = np.cross(normal[:-1], v2)
 
@@ -135,12 +135,12 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection):
     #
     # global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
 
-    global_ray_dir = np.array([random_point[0] * v3[0] + random_point[1] * normal_at_intersection[0] + random_point[2] * v2[0],
-                               random_point[0] * v3[1] + random_point[1] * normal_at_intersection[1] + random_point[2] * v2[1],
-                               random_point[0] * v3[2] + random_point[1] * normal_at_intersection[2] + random_point[2] * v2[2],
+    global_ray_dir = np.array([random_point[0] * v2[0] + random_point[1] * v3[0] + random_point[2] * normal_at_intersection[0],
+                               random_point[0] * v2[1] + random_point[1] * v3[1] + random_point[2] * normal_at_intersection[1],
+                               random_point[0] * v2[2] + random_point[1] * v3[2] + random_point[2] * normal_at_intersection[2],
                                0], dtype=np.float64)
 
-    pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
+    pdf = z*inv_pi
 
     return global_ray_dir, pdf
 
