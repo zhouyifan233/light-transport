@@ -11,7 +11,7 @@ from LightTransportSimulator.light_transport.src.utils import nearest_intersecte
 from LightTransportSimulator.light_transport.src.vectors import normalize
 
 
-@numba.njit
+
 def generate_area_light_samples(tri_1, tri_2, source_mat, number_of_samples, total_area):
     light_sources = numba.typed.List()
 

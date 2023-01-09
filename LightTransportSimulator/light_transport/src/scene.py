@@ -39,7 +39,7 @@ class Camera:
     ('top', numba.float64),
     ('right', numba.float64),
     ('bottom', numba.float64),
-    ('depth', numba.intp),
+    ('f_distance', numba.float64),
     ('image', numba.float64[:,:,:])
 ])
 class Scene:
