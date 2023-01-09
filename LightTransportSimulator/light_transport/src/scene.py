@@ -43,7 +43,7 @@ class Camera:
     ('image', numba.float64[:,:,:])
 ])
 class Scene:
-    def __init__(self, camera, lights, width=400, height=400, max_depth=3, depth=5):
+    def __init__(self, camera, lights, width=400, height=400, max_depth=3, f_distance=5):
         self.camera = camera
         self.lights = lights
         self.width = width
@@ -54,5 +54,5 @@ class Scene:
         self.top = 1/self.aspect_ratio
         self.right = 1
         self.bottom = -1/self.aspect_ratio
-        self.depth = depth
+        self.f_distance = f_distance
         self.image = np.zeros((height, width, 3), dtype=np.float64)

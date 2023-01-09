@@ -6,7 +6,7 @@ import pyvista as pv
 
 
 
-def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
+def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat):
     box_triangles = numba.typed.List()
 
     a = np.array([-dim, -dim, -dim], dtype=np.float64)
@@ -28,9 +28,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         p, q, r = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(p, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(p, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(q, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(r, dtype=np.float64),
                                        material=right_wall_mat)
@@ -46,9 +45,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         p, q, r = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(p, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(p, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(q, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(r, dtype=np.float64),
                                        material=left_wall_mat)
@@ -64,9 +62,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         p, q, r = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(p, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(p, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(q, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(r, dtype=np.float64),
                                        material=surface_mat)
@@ -82,9 +79,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         p, q, r = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(p, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(p, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(q, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(r, dtype=np.float64),
                                        material=surface_mat)
@@ -109,9 +105,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         x, y, z = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(x, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(x, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(y, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(z, dtype=np.float64),
                                        material=surface_mat)
@@ -127,9 +122,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         x, y, z = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(x, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(x, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(y, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(z, dtype=np.float64),
                                        material=surface_mat)
@@ -145,9 +139,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         x, y, z = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(x, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(x, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(y, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(z, dtype=np.float64),
                                        material=surface_mat)
@@ -163,9 +156,8 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 
     for vx in rect_vx:
         x, y, z = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(x, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(x, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(y, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(z, dtype=np.float64),
                                        material=surface_mat)
@@ -200,7 +192,7 @@ def get_cornell_box(dim, surface_mat, left_wall_mat, right_wall_mat, start_id):
 #     return box_triangles
 
 
-def get_floor(x_dim, y_dim, z_dim, surface_mat, start_id):
+def get_floor(x_dim, y_dim, z_dim, surface_mat):
     box_triangles = numba.typed.List()
 
     a = np.array([-x_dim, -y_dim, -z_dim], dtype=np.float64)
@@ -220,9 +212,8 @@ def get_floor(x_dim, y_dim, z_dim, surface_mat, start_id):
 
     for vx in rect_vx:
         p, q, r = np.append(vx[0], 1),np.append(vx[1], 1),np.append(vx[2], 1)
-        start_id+=1
-        triangle = PreComputedTriangle(id=start_id,
-                                       vertex_1=np.ascontiguousarray(p, dtype=np.float64),
+
+        triangle = PreComputedTriangle(vertex_1=np.ascontiguousarray(p, dtype=np.float64),
                                        vertex_2=np.ascontiguousarray(q, dtype=np.float64),
                                        vertex_3=np.ascontiguousarray(r, dtype=np.float64),
                                        material=surface_mat)

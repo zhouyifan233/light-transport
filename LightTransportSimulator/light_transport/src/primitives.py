@@ -83,7 +83,6 @@ c_1d_vec = numba.types.Array(dtype=numba.float64, ndim=1, layout="C")
 
 @numba.experimental.jitclass([
     ('type', numba.intp),
-    ('id', numba.intp),
     ('vertex_1', c_1d_vec),
     ('vertex_2', c_1d_vec),
     ('vertex_3', c_1d_vec),
@@ -97,9 +96,8 @@ c_1d_vec = numba.types.Array(dtype=numba.float64, ndim=1, layout="C")
     ('transformation', numba.float64[:,:])
 ])
 class PreComputedTriangle:
-    def __init__(self, id, vertex_1, vertex_2, vertex_3, material, is_light=False):
+    def __init__(self, vertex_1, vertex_2, vertex_3, material, is_light=False):
         self.type = ShapeOptions.TRIANGLEPC.value
-        self.id = id
         self.vertex_1 = vertex_1
         self.vertex_2 = vertex_2
         self.vertex_3 = vertex_3

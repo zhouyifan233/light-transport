@@ -1,10 +1,12 @@
 import numpy as np
 from numba import jit
 
+from LightTransportSimulator.light_transport.src.vectors import normalize
+
 
 @jit(nopython=True)
-def reflected_ray(vector, axis):
-    return vector - 2 * np.dot(vector, axis) * axis
+def get_reflected_direction(vector, axis):
+    return normalize(vector - 2 * np.dot(vector, axis) * axis)
 
 
 @jit(nopython=True)

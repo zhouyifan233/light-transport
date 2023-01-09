@@ -1,12 +1,27 @@
+import enum
+
 import numpy as np
 
 from .material import Color, Material
 
 inv_pi = 1/np.pi
 inv_2_pi = 0.5*inv_pi
+inv_4_pi = 0.25*inv_pi
 pi_over_2 = np.pi/2
 pi_over_4 = 0.5*pi_over_2
 EPSILON = 0.000001
+
+ZEROS = np.zeros((3), dtype=np.float64)
+ONES = np.ones((3), dtype=np.float64)
+
+class Medium(enum.Enum):
+    DIFFUSE = 1
+    GLOSSY = 2
+    REFLECTIVE = 3
+    TRANSMISSIVE = 4
+    LIGHT = 5
+    CAMERA = 6
+    NONE = 0
 
 
 WHITE = Color(ambient=np.array([1, 1, 1], dtype=np.float64),

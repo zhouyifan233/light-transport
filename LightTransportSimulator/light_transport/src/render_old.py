@@ -157,8 +157,7 @@ def trace_ray(scene, bvh, ray_origin, ray_direction, depth):
     if depth>0:
         # compute reflection
         reflect_origin = shifted_point
-        reflect_direction = reflected_ray(ray_direction, surface_normal)
-        reflect_direction = normalize(reflect_direction)
+        reflect_direction = get_reflected_direction(ray_direction, surface_normal)
         # color contribution from reflection
         reflected_color = trace_ray(scene, bvh, reflect_origin, reflect_direction, depth-1)
         reflected_color *= reflection
