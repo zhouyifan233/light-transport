@@ -8,7 +8,17 @@ c_1d_vec = numba.types.Array(dtype=numba.float64, ndim=1, layout="C")
 
 @numba.experimental.jitclass([
     ('origin', numba.float64[:]),
-    ('direction', numba.float64[:]),
+    ('direction', numba.float64[:])
+])
+class Ray:
+    def __init__(self, origin, direction):
+        self.origin = origin
+        self.direction = direction
+
+
+
+@numba.experimental.jitclass([
+    ('origin', numba.float64[:]),
     ('color', numba.float64[:]),
     ('g_norm', numba.float64[:]),
     ('pdf_pos', numba.float64),
@@ -21,10 +31,9 @@ c_1d_vec = numba.types.Array(dtype=numba.float64, ndim=1, layout="C")
     ('throughput', numba.float64[:]),
     ('geometry_term', numba.float64[:])
 ])
-class Ray:
-    def __init__(self, origin, direction):
-        self.origin = origin
-        self.direction = direction
+class Vertex:
+    def __init__(self, point):
+        self.point = point
         self.g_norm = np.zeros((3), dtype=np.float64)
         self.color = np.zeros((3), dtype=np.float64)
         self.pdf_pos = 0.0
