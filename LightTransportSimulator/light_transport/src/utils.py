@@ -18,10 +18,17 @@ def nearest_intersected_object(objects, ray_origin, ray_direction, t0=0.0, t1=np
     :param ray_end: pixel on the object
     :return: nearest object and the minimum distance to that object
     """
-    # distances = numba.typed.List()
+    # distances = []
     #
     # for obj in objects:
-    #     distances.append(triangle_intersect(ray_origin, ray_end, obj))
+    #     if obj.type == ShapeOptions.SPHERE.value:
+    #         dist = sphere_intersect(ray_origin, ray_direction, obj)
+    #     else:
+    #         dist = triangle_intersect(ray_origin, ray_direction, obj)
+    #
+    #     distances.append(dist)
+
+        # distances.append(triangle_intersect(ray_origin, ray_direction, obj))
 
     distances = [triangle_intersect(ray_origin, ray_direction, obj) for obj in objects]
 
@@ -146,7 +153,7 @@ def _cosine_weighted_hemisphere_sampling(normal_at_intersection):
 
 
 @numba.njit
-def cosine_weighted_hemisphere_sampling(normal_at_intersection):
+def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction):
     # random uniform samples
     r1 = np.random.rand()
     r2 = np.random.rand()
@@ -165,12 +172,19 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection):
     #
     # global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
 
-    global_ray_dir = np.array([random_point[0] * v2[0] + random_point[1] * v3[0] + random_point[2] * normal_at_intersection[0],
+    outgoing_direction = np.array([random_point[0] * v2[0] + random_point[1] * v3[0] + random_point[2] * normal_at_intersection[0],
                                random_point[0] * v2[1] + random_point[1] * v3[1] + random_point[2] * normal_at_intersection[1],
                                random_point[0] * v2[2] + random_point[1] * v3[2] + random_point[2] * normal_at_intersection[2],
                                0], dtype=np.float64)
 
-    # pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
-    pdf = cos_theta*inv_pi
+    #TODO: Check if reversing z required
+    if incoming_direction[2] < 0:
+        outgoing_direction[2] *= -1
 
-    return global_ray_dir, pdf
+    # pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
+    if incoming_direction[2] * outgoing_direction[2] > 0:
+        pdf = np.abs(cos_theta)*inv_pi
+    else:
+        pdf = 0
+
+    return outgoing_direction, pdf

@@ -2,12 +2,12 @@ import numba
 import numpy as np
 import numba
 
-from .primitives import Triangle
+from .primitives import Triangle, Sphere
 from .vectors import normalize
 from typing import Optional
 
 
-@numba.njit
+@numba.njit(numba.optional(numba.float64[:])(numba.float64[:], numba.float64[:], Sphere.class_type.instance_type))
 def sphere_intersect(ray_origin, ray_direction, sphere):
     """
     returns the distance from the origin of the ray to the nearest intersection point
@@ -32,7 +32,11 @@ def sphere_intersect(ray_origin, ray_direction, sphere):
         t2 = (-b - np.sqrt(delta)) / 2
         if t1 > 0 and t2 > 0:
             # return the first point of intersection
-            return min(t1, t2)
+            # return min(t1, t2)
+            if t1>t2:
+                return t2
+            else:
+                return t1
 
     return None
 

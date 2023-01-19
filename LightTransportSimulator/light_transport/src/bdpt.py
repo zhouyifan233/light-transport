@@ -11,36 +11,53 @@ from .rays import Ray
 from .utils import uniform_hemisphere_sampling, hit_object, nearest_intersected_object, \
     cosine_weighted_hemisphere_sampling
 from .vectors import normalize
+from .vertex import Vertex
 
 
 @numba.njit
-def random_walk(scene, bvh, bounce, paths, throughput, type):
+def random_walk(scene, bvh, ray, max_depth, paths, throughput, pdf_init, type):
 
+    if max_depth==0:
+        return paths
 
+    bounces = 0
+
+    # Declare variables for forward and reverse probability densities
+    pdf_fwd = pdf_init
+    pdf_rev = 0
 
     while True:
-        ray = paths[-1] # last added ray from the paths
-
-        # terminate path if (max bounce-1) is reached
-        if bounce==0:
-            break
-
-        # update forward and reverse densities
-        ray.fwd_pdf = ray.pdf_dir
-        ray.rev_pdf = 0
+        # attempt to find next vertex on the path
 
         _rand = np.random.rand()
 
+        vx = paths[bounces] # current vertex
+        prev = paths[bounces-1] # previous vertex
+
         # intersect ray with scene
         nearest_object, min_distance, intersection, surface_normal = hit_object(bvh, ray.origin, ray.direction)
+
+        #TODO: Check for medium interaction: Volumetric Rendering (smoke, gas, fog, etc.)
 
         # terminate path if no intersection is found
         if nearest_object is None:
             # no object was hit
             break
 
-        # add emitted light at intersection
-        
+        # check if the intersected object is a light
+        if nearest_object.is_light:
+            # create a light vertex
+            # light += nearest_object.material.emission * throughput
+            bounces += 1
+            break # path ends here
+
+        # compute scattering distribution
+        #TODO: create a surface vertex
+        bounces += 1
+
+        if bounces>=max_depth:
+            break
+
 
         ray_inside_object = False
         if np.dot(surface_normal, ray.direction) > 0:
@@ -50,7 +67,7 @@ def random_walk(scene, bvh, bounce, paths, throughput, type):
         # check if diffuse surface, i.e. light scatters equally in all direction
         if nearest_object.material.is_diffuse:
             # indirect light contribution
-            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal)
+            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction)
 
             if pdf==0:
                 break
@@ -64,13 +81,11 @@ def random_walk(scene, bvh, bounce, paths, throughput, type):
 
             brdf = nearest_object.material.color.diffuse * inv_pi
 
-            indirect_ray.throughput *= brdf * cos_theta / pdf
+            throughput *= brdf * cos_theta / pdf
 
             indirect_ray.fwd_pdf = indirect_ray.rev_pdf = pdf
             indirect_ray.color = brdf
             indirect_ray.medium = Medium.DIFFUSE.value
-
-            paths.append(indirect_ray)
 
         # check if mirror surface, i.e. light reflects in a single outgoing direction
         elif nearest_object.material.is_mirror:
@@ -78,7 +93,6 @@ def random_walk(scene, bvh, bounce, paths, throughput, type):
             reflected_ray_origin = intersection + EPSILON * surface_normal
             reflected_ray_direction = get_reflected_direction(ray.direction, surface_normal)
             reflected_ray = Ray(reflected_ray_origin, reflected_ray_direction)
-            paths.append(reflected_ray)
 
         # check if light gets transmitted in this medium
         elif nearest_object.material.transmission>0.0:
@@ -111,27 +125,27 @@ def random_walk(scene, bvh, bounce, paths, throughput, type):
                 transmit_direction = (ray.direction * Nr) + (surface_normal * (Nr * cos_theta - np.sqrt(_sqrt)))
                 transmit_direction = normalize(transmit_direction)
                 transmit_ray = Ray(transmit_origin, transmit_direction)
-                paths.append(transmit_ray)
 
             else:
                 # reflection
                 reflected_origin = intersection + EPSILON * surface_normal
                 reflected_direction = get_reflected_direction(ray.direction, surface_normal)
                 reflected_ray = Ray(reflected_origin, reflected_direction)
-                paths.append(reflected_ray)
 
         else:
             # error
             break
 
-        # terminate path using russian roulette
-        if bounce>3:
-            r_r = max(0.05, 1-ray.throughput[1]) # russian roulette factor
-            if _rand<r_r:
-                break
-            ray.throughput /= 1-r_r
+        #TODO: break if throughput is black
 
-        bounce -= 1 # decrement bounce
+        prev.pdf_rev = convert_density(pdf_rev, vx, prev)
+
+        # # terminate path using russian roulette
+        # if bounce>3:
+        #     r_r = max(0.05, 1-ray.throughput[1]) # russian roulette factor
+        #     if _rand<r_r:
+        #         break
+        #     ray.throughput /= 1-r_r
 
     return paths
 
@@ -162,6 +176,7 @@ def get_camera_importance(screen_area, cos_theta):
 
 @numba.njit
 def get_camera_pdf(screen_area, cos_theta):
+    # returns spatial and directional pdfs of a camera
     pdf_pos = 1 # no lens, area is 1
     pdf_dir = 1/(screen_area*(cos_theta**3))
     return pdf_pos, pdf_dir
@@ -177,16 +192,28 @@ def generate_camera_subpaths(scene, bvh, end, origin, screen_area, camera_normal
 
     cos_theta = np.dot(ray.direction, camera_normal)
 
-    ray.g_norm = camera_normal
-    ray.pdf_pos, ray.pdf_dir = get_camera_pdf(screen_area, cos_theta)
-    ray.importance = get_camera_importance(screen_area, cos_theta)
-    ray.medium = Medium.CAMERA.value
+    pdf_pos, pdf_dir = get_camera_pdf(screen_area, cos_theta)
 
-    camera_paths = numba.typed.List()
-    camera_paths.append(ray)
-    camera_paths = random_walk(scene, bvh, scene.max_depth-2, camera_paths, 1)
+    importance = get_camera_importance(screen_area, cos_theta)
 
-    return camera_paths
+    throughput = 1 # 1 for simple camera model, otherwise a floating-point value that affects how much
+    # the radiance arriving at the film plane along the generated ray will contribute to the final image.
+
+    # camera is starting vertex for backward-path-tracing
+    cam_vertex = Vertex(point=ray.origin,
+                        g_norm=camera_normal,
+                        pdf_pos=pdf_pos,
+                        pdf_dir=pdf_dir,
+                        importance=importance,
+                        medium=Medium.CAMERA.value)
+
+
+    camera_vertices = numba.typed.List() # will contain the vertices on the path starting from camera
+    camera_vertices.append(cam_vertex)
+
+    camera_vertices = random_walk(scene, bvh, ray, scene.max_depth-1, camera_vertices, throughput, pdf_dir, 1)
+
+    return camera_vertices
 
 
 @numba.njit
@@ -242,10 +269,12 @@ def generate_light_subpaths(scene, bvh):
 
 
 @numba.njit
-def convert_density(pdf, current_v, next_v , next_normal):
-    path_magnitude = np.linalg.norm(next_v - current_v)
+def convert_density(pdf, current_v, next_v):
+    path = next_v.point - current_v.point
+    path_magnitude = np.linalg.norm(path)
     inv_dist_sqr = 1/(path_magnitude*path_magnitude)
-    pdf *= abs(np.dot(next_normal, path_magnitude*inv_dist_sqr))
+    if next_v.g_norm: # next vertex is on a surface if the geometric normal is non-zero
+        pdf *= abs(np.dot(next_v.g_norm, path*math.sqrt(inv_dist_sqr)))
     return pdf * inv_dist_sqr
 
 
@@ -342,11 +371,11 @@ def render_scene(scene, bvh, number_of_samples=10):
                 end = np.array([x, y, scene.depth, 1], dtype=np.float64) # pixel
                 origin = np.array([scene.camera[0], scene.camera[1], scene.camera[2], 1], dtype=np.float64) # camera
                 #TODO: implement better ray differentials, e.g. PBRT
-                camera_paths = generate_camera_subpaths(scene, bvh, end, origin, screen_area, camera_normal)
-                light_paths = generate_light_subpaths(scene, bvh)
+                camera_vertices = generate_camera_subpaths(scene, bvh, end, origin, screen_area, camera_normal)
+                light_vertices = generate_light_subpaths(scene, bvh)
 
-                camera_n = len(camera_paths)
-                light_n = len(light_paths)
+                camera_n = len(camera_vertices)
+                light_n = len(light_vertices)
 
                 for t in range(1, camera_n+1):
                     for s in range(light_n+1):

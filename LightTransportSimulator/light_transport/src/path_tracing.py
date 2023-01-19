@@ -50,7 +50,7 @@ def trace_path(scene, bvh, ray, bounce):
             direct_light = cast_one_shadow_ray(scene, bvh, nearest_object, shadow_ray_origin, surface_normal)
 
             # indirect light contribution
-            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal)
+            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction)
 
             if pdf==0:
                 break
