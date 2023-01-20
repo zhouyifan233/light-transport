@@ -4,12 +4,13 @@ import numba
 import numpy as np
 
 from LightTransportSimulator.light_transport.src.bvh import traverse_bvh
-from LightTransportSimulator.light_transport.src.constants import inv_pi, EPSILON
+from LightTransportSimulator.light_transport.src.constants import inv_pi, EPSILON, Medium
 from LightTransportSimulator.light_transport.src.rays import Ray
 from LightTransportSimulator.light_transport.src.scene import Light
-from LightTransportSimulator.light_transport.src.utils import nearest_intersected_object, uniform_hemisphere_sampling, cosine_weighted_hemisphere_sampling
+from LightTransportSimulator.light_transport.src.utils import nearest_intersected_object, uniform_hemisphere_sampling, \
+    cosine_weighted_hemisphere_sampling, create_orthonormal_system
 from LightTransportSimulator.light_transport.src.vectors import normalize
-
+from LightTransportSimulator.light_transport.src.vertex import Vertex
 
 
 def generate_area_light_samples(tri_1, tri_2, source_mat, number_of_samples, total_area):
@@ -56,28 +57,59 @@ def cast_one_shadow_ray(scene, bvh, intersected_object, intersection_point, inte
     return light_contrib
 
 
+def cosine_weighted_light_sampling(normal_at_intersection):
+    # random uniform samples
+    r1 = np.random.rand()
+    r2 = np.random.rand()
+
+    phi = 2*np.pi*r2
+    theta = np.arccos(np.sqrt(r1))
+    cos_theta = np.cos(theta)
+
+    random_point = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), cos_theta], dtype=np.float64)
+
+    v2, v3 = create_orthonormal_system(normal_at_intersection)
+
+    outgoing_direction = np.array([random_point[0] * v2[0] + random_point[1] * v3[0] + random_point[2] * normal_at_intersection[0],
+                                   random_point[0] * v2[1] + random_point[1] * v3[1] + random_point[2] * normal_at_intersection[1],
+                                   random_point[0] * v2[2] + random_point[1] * v3[2] + random_point[2] * normal_at_intersection[2],
+                                   0], dtype=np.float64)
+
+
+    pdf = np.abs(cos_theta)*inv_pi
+
+    return outgoing_direction, pdf
+
+
 
 @numba.njit
 def sample_light(scene):
     random_light_index = np.random.choice(len(scene.lights), 1)[0]
     light = scene.lights[random_light_index]
 
-    light_ray_direction, pdf_dir = cosine_weighted_hemisphere_sampling(light.normal)
+    light_ray_direction, pdf_dir = cosine_weighted_light_sampling(light.normal)
+
     light_ray_origin = light.source + EPSILON * light_ray_direction
+
     light_ray = Ray(light_ray_origin, light_ray_direction)
 
-    light_ray.pdf_pos = 1/light.total_area
-    light_ray.pdf_dir = pdf_dir
+    pdf_pos = 1/light.total_area
 
-    light_ray.fwd_pdf = light_ray.rev_pdf = pdf_dir # TODO: Fix
+    # create light vertex
+    light_vertex = Vertex(point=light_ray.origin,
+                        g_norm=light.normal,
+                        pdf_pos=pdf_pos,
+                        pdf_dir=pdf_dir,
+                        color=light.material.color,
+                        importance=importance,
+                        medium=Medium.LIGHT.value)
 
-    light_ray.g_norm = light.normal
+    light_choice_pdf = 1 # 1/no_of_lights
+    light_pdf = light_choice_pdf * (1/light.total_area)
 
-    light_pdf = 1 # TODO: Fix using Halton Index
+    throughput = (light.material.emission*abs(np.dot(light_vertex.g_norm, light_ray.direction)))/(light_pdf*light_vertex.pdf_pos*light_vertex.pdf_dir)
 
-    light_ray.throughput = (light.material.emission*abs(np.dot(light_ray.g_norm, light_ray.direction)))/(light_pdf*light_ray.pdf_pos*light_ray.pdf_dir)
-
-    return light_ray
+    return light_ray, light_vertex, throughput
 
 
 @numba.njit

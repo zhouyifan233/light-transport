@@ -186,5 +186,6 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_directi
         pdf = np.abs(cos_theta)*inv_pi
     else:
         pdf = 0
+    # pdf = np.abs(cos_theta)*inv_pi
 
     return outgoing_direction, pdf

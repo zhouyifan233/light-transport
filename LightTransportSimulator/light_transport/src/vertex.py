@@ -18,7 +18,8 @@ from .constants import Medium
     ('hit_light', numba.boolean),
     ('medium', numba.intp),
     ('throughput', numba.float64[:]),
-    ('geometry_term', numba.float64[:])
+    ('geometry_term', numba.float64[:]),
+    ('is_delta', numba.boolean)
 ])
 class Vertex:
     def __init__(self, point):
@@ -34,3 +35,4 @@ class Vertex:
         self.medium = Medium.NONE.value
         self.throughput = np.ones((3), dtype=np.float64)
         self.geometry_term = np.zeros((3), dtype=np.float64)
+        self.is_delta = False
