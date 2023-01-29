@@ -143,3 +143,7 @@ class BVH:
         min_leaf_size = len(shapes)*0.1
         min_leaf_size = 2 if min_leaf_size < 2 else round(min_leaf_size)
         self.top = self.create_hierarchy(self.top, shapes, bounding_box, min_leaf_size)
+
+
+
+

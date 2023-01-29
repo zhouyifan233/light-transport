@@ -4,6 +4,7 @@ import numpy as np
 import numba
 
 from .bvh import traverse_bvh
+from .bvh_new import intersect_bvh
 from .constants import inv_2_pi, pi_over_4, pi_over_2, inv_pi
 from .intersects import sphere_intersect, triangle_intersect, plane_intersect, __triangle_intersect, pc_triangle_intersect
 from .primitives import Triangle, Sphere, Plane, ShapeOptions
@@ -49,9 +50,10 @@ def nearest_intersected_object(objects, ray_origin, ray_direction, t0=0.0, t1=np
 
 
 @numba.njit
-def hit_object(bvh, ray_origin, ray_direction):
+def hit_object(primitives, linear_bvh, ray_origin, ray_direction):
     # get hittable objects
-    objects = traverse_bvh(bvh, ray_origin, ray_direction)
+    # objects = traverse_bvh(bvh, ray_origin, ray_direction)
+    objects = intersect_bvh(ray_origin, ray_direction, linear_bvh, primitives)
     # check for intersections
     nearest_object, min_distance = nearest_intersected_object(objects, ray_origin, ray_direction)
 
@@ -178,14 +180,14 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_directi
                                0], dtype=np.float64)
 
     #TODO: Check if reversing z required
-    if incoming_direction[2] < 0:
-        outgoing_direction[2] *= -1
+    # if incoming_direction[2] < 0:
+    #     outgoing_direction[2] *= -1
 
     # pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
-    if incoming_direction[2] * outgoing_direction[2] > 0:
-        pdf = np.abs(cos_theta)*inv_pi
-    else:
-        pdf = 0
-    # pdf = np.abs(cos_theta)*inv_pi
+    # if incoming_direction[2] * outgoing_direction[2] > 0:
+    #     pdf = np.abs(cos_theta)*inv_pi
+    # else:
+    #     pdf = 0
+    pdf = np.abs(cos_theta)*inv_pi
 
     return outgoing_direction, pdf

@@ -4,6 +4,7 @@ import numba
 import numpy as np
 
 from LightTransportSimulator.light_transport.src.bvh import traverse_bvh
+from LightTransportSimulator.light_transport.src.bvh_new import intersect_bvh
 from LightTransportSimulator.light_transport.src.constants import inv_pi, EPSILON, Medium
 from LightTransportSimulator.light_transport.src.rays import Ray
 from LightTransportSimulator.light_transport.src.scene import Light
@@ -32,7 +33,7 @@ def generate_area_light_samples(tri_1, tri_2, source_mat, number_of_samples, tot
 
 
 @numba.njit
-def cast_one_shadow_ray(scene, bvh, intersected_object, intersection_point, intersection_normal):
+def cast_one_shadow_ray(scene, primitives, linear_bvh, intersected_object, intersection_point, intersection_normal):
     light_contrib = np.zeros((3), dtype=np.float64)
     random_light_index = np.random.choice(len(scene.lights), 1)[0]
     light = scene.lights[random_light_index]
@@ -40,7 +41,8 @@ def cast_one_shadow_ray(scene, bvh, intersected_object, intersection_point, inte
     shadow_ray_direction = normalize(light.source - intersection_point)
     shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
 
-    _objects = traverse_bvh(bvh, intersection_point, shadow_ray_direction)
+    # _objects = traverse_bvh(bvh, intersection_point, shadow_ray_direction)
+    _objects = intersect_bvh(intersection_point, shadow_ray_direction, linear_bvh, primitives)
     _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
 
     if min_distance is None:

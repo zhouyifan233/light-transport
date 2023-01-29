@@ -14,7 +14,7 @@ from .vectors import normalize
 
 
 @numba.njit
-def trace_path(scene, primitives, linear_bvh, ray, bounce):
+def trace_path(scene, bvh, ray, bounce):
     throughput = np.ones((3), dtype=np.float64)
     light = np.zeros((3), dtype=np.float64)
     specular_bounce = False
@@ -27,7 +27,7 @@ def trace_path(scene, primitives, linear_bvh, ray, bounce):
         _rand = np.random.rand()
 
         # intersect ray with scene
-        nearest_object, min_distance, intersection, surface_normal = hit_object(primitives, linear_bvh, ray.origin, ray.direction)
+        nearest_object, min_distance, intersection, surface_normal = hit_object(bvh, ray.origin, ray.direction)
 
         # terminate path if no intersection is found
         if nearest_object is None:
@@ -47,7 +47,7 @@ def trace_path(scene, primitives, linear_bvh, ray, bounce):
         if nearest_object.material.is_diffuse:
             shadow_ray_origin = intersection + EPSILON * surface_normal
             # direct light contribution
-            direct_light = cast_one_shadow_ray(scene, primitives, linear_bvh, nearest_object, shadow_ray_origin, surface_normal)
+            direct_light = cast_one_shadow_ray(scene, bvh, nearest_object, shadow_ray_origin, surface_normal)
 
             # indirect light contribution
             indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction)
@@ -67,7 +67,7 @@ def trace_path(scene, primitives, linear_bvh, ray, bounce):
 
             throughput *= brdf * cos_theta / pdf
 
-            indirect_light = throughput * trace_path(scene, primitives, linear_bvh, ray, bounce+1)
+            indirect_light = throughput * trace_path(scene, bvh, ray, bounce+1)
 
             light += (direct_light+indirect_light)
 
@@ -131,7 +131,7 @@ def trace_path(scene, primitives, linear_bvh, ray, bounce):
 
 
 @numba.njit(parallel=True)
-def render_scene(scene, primitives, linear_bvh, number_of_samples=10):
+def render_scene(scene, bvh, number_of_samples=10):
     top_bottom = np.linspace(scene.top, scene.bottom, scene.height)
     left_right = np.linspace(scene.left, scene.right, scene.width)
     pix_count = 0
@@ -147,7 +147,7 @@ def render_scene(scene, primitives, linear_bvh, number_of_samples=10):
                 direction = normalize(end - origin)
                 ray = Ray(origin, direction)
                 # for k in range(scene.max_depth):
-                color += trace_path(scene, primitives, linear_bvh, ray, 0)
+                color += trace_path(scene, bvh, ray, 0)
             color = color/number_of_samples
             scene.image[i, j] = np.clip(color, 0, 1)
         pix_count+=1

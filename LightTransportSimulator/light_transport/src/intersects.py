@@ -2,6 +2,7 @@ import numba
 import numpy as np
 import numba
 
+from .constants import EPSILON
 from .primitives import Triangle, Sphere
 from .vectors import normalize
 from typing import Optional
@@ -172,6 +173,34 @@ def aabb_intersect(ray_origin, ray_direction, box):
         t_min = min(max(t1, t_min), max(t2, t_min))
         t_max = max(min(t1, t_max), min(t2, t_max))
     return t_min<=t_max
+
+
+@numba.njit
+def intersect_bounds(bounds, ray_origin, ray_direction, inv_dir, dir_is_neg):
+    # check for ray intersection against x and y slabs
+    tmin = ((bounds.max_point[0] if dir_is_neg[0] else bounds.min_point[0]) - ray_origin[0]) * inv_dir[0]
+    tmax = ((bounds.min_point[0] if dir_is_neg[0] else bounds.max_point[0]) - ray_origin[0]) * inv_dir[0]
+    tymin = ((bounds.max_point[1] if dir_is_neg[1] else bounds.min_point[1]) - ray_origin[1]) * inv_dir[1]
+    tymax = ((bounds.min_point[1] if dir_is_neg[1] else bounds.max_point[1]) - ray_origin[1]) * inv_dir[1]
+    if tmin > tymax or tymin > tmax:
+        return False
+    if tymin > tmin:
+        tmin = tymin
+    if tymax < tmax:
+        tmax = tymax
+
+    # check for ray intersection against z slab
+    tzmin = ((bounds.max_point[2] if dir_is_neg[2] else bounds.min_point[2]) - ray_origin[2]) * inv_dir[2]
+    tzmax = ((bounds.min_point[2] if dir_is_neg[2] else bounds.max_point[2]) - ray_origin[2]) * inv_dir[2]
+    if tmin > tzmax or tzmin > tmax:
+        return False
+    if tzmin > tmin:
+        tmin = tzmin
+    if tzmax < tmax:
+        tmax = tzmax
+    return (tmin < np.inf) and (tmax > EPSILON)
+
+
 
 
 @numba.njit
