@@ -1,14 +1,17 @@
 import numba
 import numpy as np
 
+from .constants import EPSILON
 from .intersects import aabb_intersect, triangle_intersect, intersect_bounds
 from .primitives import AABB, Triangle, PreComputedTriangle
 from .stl4py import nth_element, partition
 
 
+
 class BoundedBox:
-    def __init__(self, prim):
+    def __init__(self, prim, n):
         self.prim = prim
+        self.prim_num = n
         self.bounds = get_bounds(prim)
 
 
@@ -128,33 +131,41 @@ def partition_pred(x, n_buckets, centroid_bounds, dim, min_cost_split_bucket):
     return b <= min_cost_split_bucket
 
 
-def build_bvh(bvh_nodes, bounded_boxes, start, end, max_prims=1):
+def build_bvh(bvh_nodes, bounded_boxes, start, end):
+    max_prims = 1
     # append a node
     bvh_nodes.append(BVHNode())
     node = bvh_nodes[-1]
-    n_primitives = start - end
-    if n_primitives<=max_prims:
+
+    n_primitives = end - start
+    if n_primitives <= max_prims:
+        # make node a leaf
         node.n_primitives = n_primitives
         for i in range(start, end):
             node.bounds = enclose_volumes(node.bounds, bounded_boxes[i].bounds)
-        node.child_0 = start - 0
+        node.child_0 = start
     else:
+        # make node an interior node
         node.n_primitives = 0
-        centroid_bounds = None
-        for i in range(start, end):
-            centroid_bounds = enclose_centroids(centroid_bounds, bounded_boxes[i].bounds.centroid)
-        node.split_axis = get_largest_dim(centroid_bounds)
-        mid = start + (end-start)//2
-        nth_element(bounded_boxes, mid, first=start, last=end, key=lambda x: x.bounds.centroid[node.split_axis])
 
+        centroid_bound = None
+        for i in range(start, end):
+            centroid_bound = enclose_centroids(centroid_bound, bounded_boxes[i].bounds.centroid)
+        node.split_axis = get_largest_dim(centroid_bound)
+        mid = start + (end - start) // 2
+        bounded_boxes[start:end] = sorted(bounded_boxes[start:end], key=lambda x: x.bounds.centroid[node.split_axis], reverse=False)
+
+        # recursively call for left and right child and note the index of the second child in-between
         child_0_idx = len(bvh_nodes)
         bvh_nodes, bounded_boxes = build_bvh(bvh_nodes, bounded_boxes, start, mid)
         node.child_1 = len(bvh_nodes)
         bvh_nodes, bounded_boxes = build_bvh(bvh_nodes, bounded_boxes, mid, end)
+
+        # the world bound of this node encloses the ones of both children
+        # print(len(bvh_nodes), child_0_idx, node.child_1)
         node.bounds = enclose_volumes(bvh_nodes[child_0_idx].bounds, bvh_nodes[node.child_1].bounds)
 
     return bvh_nodes, bounded_boxes
-
 
 
 @numba.njit
@@ -179,45 +190,102 @@ def flatten_bvh(linear_nodes, node, offset):
     return linear_nodes, offset
 
 
-@numba.njit
-def intersect_bvh(ray_origin, ray_direction, linear_bvh, primitives):
-    triangles = []
-    hit = False
 
+@numba.njit
+def intersect_bvh(ray_origin, ray_direction, bvh_nodes, primitives):
+    triangles = []
+    current_t = np.inf
+    current_idx = 0
     inv_dir = 1/ray_direction
     dir_is_neg = [inv_dir[0] < 0, inv_dir[1] < 0, inv_dir[2] < 0]
-    to_visit_offset = 0
-    current_node_index = 0
-    nodes_to_visit = [0 for _ in range(64)] #
-
+    visited_nodes = [False for _ in range(len(bvh_nodes))]
     while True:
-        node = linear_bvh[int(current_node_index)]
-        if intersect_bounds(node.bounds, ray_origin, ray_direction, inv_dir, dir_is_neg):
-        # if aabb_intersect(ray_origin, ray_direction, node.bounds):
-            if node.n_primitives > 0:
-                for i in range(node.n_primitives):
-                    if triangle_intersect(ray_origin, ray_direction, primitives[node.primitives_offset + i]) is not None:
-                        # print("intersected!!!")
-                        hit = True
-                        triangles.append(primitives[node.primitives_offset + i])
-                if to_visit_offset == 0:
-                    break
-                current_node_index = nodes_to_visit[to_visit_offset-1]
-                to_visit_offset -= 1
-            else:
-                if dir_is_neg[node.axis]:
-                    nodes_to_visit[to_visit_offset] = current_node_index + 1
-                    to_visit_offset += 1
-                    current_node_index = node.second_child_offset
+        if not visited_nodes[current_idx]:
+            visited_nodes[current_idx] = True
+            node = bvh_nodes[int(current_idx)]
+            # print("checking node: "+ str(current_idx))
+            if intersect_bounds(node.bounds, ray_origin, ray_direction, inv_dir, dir_is_neg):
+                # check if it's a leaf node
+                if node.n_primitives>0:
+                    # print("intersected node: "+ str(current_idx))
+                    for i in range(node.child_0, node.child_0+node.n_primitives):
+                        t = triangle_intersect(ray_origin, ray_direction, primitives[i])
+                        if t is None:
+                            continue
+                        if EPSILON < t < current_t:
+                            current_t = t
+                            triangles.append(primitives[i])
                 else:
-                    nodes_to_visit[to_visit_offset] = node.second_child_offset
-                    to_visit_offset += 1
-                    current_node_index += 1
+                    if dir_is_neg[node.split_axis]:
+                        current_idx = node.child_1
+                    else:
+                        for i in range(len(visited_nodes)):
+                            if not visited_nodes[i]:
+                                current_idx = i
+                                break
+            else:
+                for i in range(len(visited_nodes)):
+                    if not visited_nodes[i]:
+                        current_idx = i
+                        break
         else:
-            if to_visit_offset == 0:
+            for i in range(len(visited_nodes)):
+                if not visited_nodes[i]:
+                    current_idx = i
+                    break
+        all_visited = True
+        for i in range(len(visited_nodes)):
+            if not visited_nodes[i]:
+                all_visited=False
                 break
-
-            current_node_index = nodes_to_visit[to_visit_offset-1]
-            to_visit_offset -= 1
+        if all_visited:
+            break
 
     return triangles
+
+
+
+# @numba.njit
+# def intersect_bvh(ray_origin, ray_direction, bvh_nodes, primitives):
+#     triangles = []
+#     current_t = np.inf
+#
+#     inv_dir = 1/ray_direction
+#     dir_is_neg = [inv_dir[0] < 0, inv_dir[1] < 0, inv_dir[2] < 0]
+#     to_visit_offset = 0
+#     current_node_index = 0
+#     nodes_to_visit = [1000 for _ in range(64)] #
+#
+#     while True:
+#         node = bvh_nodes[int(current_node_index)]
+#         if intersect_bounds(node.bounds, ray_origin, ray_direction, inv_dir, dir_is_neg):
+#         # if aabb_intersect(ray_origin, ray_direction, node.bounds):
+#             if node.n_primitives > 0:
+#                 for i in range(node.child_0, node.child_0+node.n_primitives):
+#                     t = triangle_intersect(ray_origin, ray_direction, primitives[i])
+#                     if t is None:
+#                         continue
+#                     if EPSILON < t < current_t:
+#                         current_t = t
+#                         triangles.append(primitives[i])
+#                 if to_visit_offset == 0:
+#                     break
+#                 to_visit_offset -= 1
+#                 current_node_index = nodes_to_visit[to_visit_offset]
+#             else:
+#                 if dir_is_neg[node.split_axis]:
+#                     nodes_to_visit[to_visit_offset] = current_node_index + 1
+#                     to_visit_offset += 1
+#                     current_node_index = node.child_1
+#                 else:
+#                     nodes_to_visit[to_visit_offset] = node.child_1
+#                     to_visit_offset += 1
+#                     current_node_index += 1
+#         else:
+#             if to_visit_offset == 0:
+#                 break
+#
+#             to_visit_offset -= 1
+#             current_node_index = nodes_to_visit[to_visit_offset]
+#
+#     return triangles

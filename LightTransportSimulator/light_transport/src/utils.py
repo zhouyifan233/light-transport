@@ -53,9 +53,9 @@ def nearest_intersected_object(objects, ray_origin, ray_direction, t0=0.0, t1=np
 def hit_object(primitives, linear_bvh, ray_origin, ray_direction):
     # get hittable objects
     # objects = traverse_bvh(bvh, ray_origin, ray_direction)
-    objects = intersect_bvh(ray_origin, ray_direction, linear_bvh, primitives)
+    nearest_object, min_distance = intersect_bvh(ray_origin, ray_direction, linear_bvh, primitives)
     # check for intersections
-    nearest_object, min_distance = nearest_intersected_object(objects, ray_origin, ray_direction)
+    # nearest_object, min_distance = nearest_intersected_object(objects, ray_origin, ray_direction)
 
     if nearest_object is None:
         # no object was hit

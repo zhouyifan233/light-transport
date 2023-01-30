@@ -42,8 +42,8 @@ def cast_one_shadow_ray(scene, primitives, linear_bvh, intersected_object, inter
     shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
 
     # _objects = traverse_bvh(bvh, intersection_point, shadow_ray_direction)
-    _objects = intersect_bvh(intersection_point, shadow_ray_direction, linear_bvh, primitives)
-    _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
+    _, min_distance = intersect_bvh(intersection_point, shadow_ray_direction, linear_bvh, primitives)
+    # _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
 
     if min_distance is None:
         return light_contrib # black background- unlikely
@@ -115,14 +115,15 @@ def sample_light(scene):
 
 
 @numba.njit
-def cast_all_shadow_rays(scene, bvh, intersected_object, intersection_point, intersection_normal):
+def cast_all_shadow_rays(scene, primitives, linear_bvh, intersected_object, intersection_point, intersection_normal):
     light_contrib = np.zeros((3), dtype=np.float64)
     for light in scene.lights:
         shadow_ray_direction = normalize(light.source - intersection_point)
         shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
 
-        _objects = traverse_bvh(bvh, intersection_point, shadow_ray_direction)
-        _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
+        # _objects = traverse_bvh(bvh, intersection_point, shadow_ray_direction)
+        _, min_distance = intersect_bvh(intersection_point, shadow_ray_direction, linear_bvh, primitives)
+        # _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
 
         if min_distance is None:
             break
