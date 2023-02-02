@@ -6,6 +6,7 @@ import numpy as np
 from .brdf import *
 from .bvh import traverse_bvh
 from .constants import inv_pi, EPSILON
+from .control_variates import calculate_dlogpdu, estimate_alpha
 from .light_samples import cast_one_shadow_ray
 from .rays import Ray
 from .utils import uniform_hemisphere_sampling, hit_object, nearest_intersected_object, \
@@ -14,7 +15,7 @@ from .vectors import normalize
 
 
 @numba.njit
-def trace_path(scene, bvh, ray, bounce):
+def trace_path(scene, bvh, ray, bounce, rand):
     throughput = np.ones((3), dtype=np.float64)
     light = np.zeros((3), dtype=np.float64)
     specular_bounce = False
@@ -24,7 +25,7 @@ def trace_path(scene, bvh, ray, bounce):
         if bounce>=scene.max_depth:
             break
 
-        _rand = np.random.rand()
+        _rand = rand[0]#np.random.rand()
 
         # intersect ray with scene
         nearest_object, min_distance, intersection, surface_normal = hit_object(bvh, ray.origin, ray.direction)
@@ -50,7 +51,7 @@ def trace_path(scene, bvh, ray, bounce):
             direct_light = cast_one_shadow_ray(scene, bvh, nearest_object, shadow_ray_origin, surface_normal)
 
             # indirect light contribution
-            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction)
+            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction, rand)
 
             if pdf==0:
                 break
@@ -67,7 +68,7 @@ def trace_path(scene, bvh, ray, bounce):
 
             throughput *= brdf * cos_theta / pdf
 
-            indirect_light = throughput * trace_path(scene, bvh, ray, bounce+1)
+            indirect_light = throughput * trace_path(scene, bvh, ray, bounce+1, rand)
 
             light += (direct_light+indirect_light)
 
@@ -131,7 +132,7 @@ def trace_path(scene, bvh, ray, bounce):
 
 
 @numba.njit(parallel=True)
-def render_scene(scene, bvh, number_of_samples=10):
+def render_scene(scene, bvh):
     top_bottom = np.linspace(scene.top, scene.bottom, scene.height)
     left_right = np.linspace(scene.left, scene.right, scene.width)
     pix_count = 0
@@ -139,16 +140,22 @@ def render_scene(scene, bvh, number_of_samples=10):
         y = top_bottom[i]
         for j in numba.prange(scene.width):
             color = np.zeros((3), dtype=np.float64)
-            for _sample in range(number_of_samples):
+            for _sample in range(scene.number_of_samples):
+                rand = [scene.rand_0[i, j, _sample], scene.rand_1[i, j, _sample]]
+                dlogpdu = calculate_dlogpdu(rand)
                 x = left_right[j]
                 # screen is on origin
                 end = np.array([x, y, scene.f_distance, 1], dtype=np.float64) # pixel
+                # anti-aliasing
+                end[0] += rand[0]/scene.width
+                end[1] += rand[0]/scene.height
                 origin = np.array([scene.camera[0], scene.camera[1], scene.camera[2], 1], dtype=np.float64)
                 direction = normalize(end - origin)
                 ray = Ray(origin, direction)
                 # for k in range(scene.max_depth):
-                color += trace_path(scene, bvh, ray, 0)
-            color = color/number_of_samples
+                color += trace_path(scene, bvh, ray, 0, rand)
+                alpha = estimate_alpha(color)
+            color = color/scene.number_of_samples
             scene.image[i, j] = np.clip(color, 0, 1)
         pix_count+=1
         print((pix_count/scene.height)*100)

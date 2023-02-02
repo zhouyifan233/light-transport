@@ -2,7 +2,8 @@ import numba
 import numpy as np
 import numba
 
-from .primitives import Triangle, Sphere
+from .constants import EPSILON
+from .primitives import Triangle, Sphere, PreComputedTriangle
 from .vectors import normalize
 from typing import Optional
 
@@ -175,38 +176,273 @@ def aabb_intersect(ray_origin, ray_direction, box):
 
 
 @numba.njit
+def intersect_bounds(bounds, ray_origin, ray_direction, inv_dir, dir_is_neg):
+    # check for ray intersection against x and y slabs
+    tmin = ((bounds.max_point[0] if dir_is_neg[0] else bounds.min_point[0]) - ray_origin[0]) * inv_dir[0]
+    tmax = ((bounds.min_point[0] if dir_is_neg[0] else bounds.max_point[0]) - ray_origin[0]) * inv_dir[0]
+    tymin = ((bounds.max_point[1] if dir_is_neg[1] else bounds.min_point[1]) - ray_origin[1]) * inv_dir[1]
+    tymax = ((bounds.min_point[1] if dir_is_neg[1] else bounds.max_point[1]) - ray_origin[1]) * inv_dir[1]
+    if tmin > tymax or tymin > tmax:
+        return False
+    if tymin > tmin:
+        tmin = tymin
+    if tymax < tmax:
+        tmax = tymax
+
+    # check for ray intersection against z slab
+    tzmin = ((bounds.max_point[2] if dir_is_neg[2] else bounds.min_point[2]) - ray_origin[2]) * inv_dir[2]
+    tzmax = ((bounds.min_point[2] if dir_is_neg[2] else bounds.max_point[2]) - ray_origin[2]) * inv_dir[2]
+    if tmin > tzmax or tzmin > tmax:
+        return False
+    if tzmin > tmin:
+        tmin = tzmin
+    if tzmax < tmax:
+        tmax = tzmax
+    return (tmin < np.inf) and (tmax > EPSILON)
+
+
+@numba.njit
+def create_orthonormal_system(normal):
+    if abs(normal[0]) > abs(normal[1]):
+        v2 = np.array([-normal[2], 0.0, normal[0]], dtype=np.float64) / np.sqrt(np.array([normal[0] * normal[0] + normal[2] * normal[2]], dtype=np.float64))
+    else:
+        v2 = np.array([0.0, normal[2], -normal[1]], dtype=np.float64) / np.sqrt(np.array([normal[1] * normal[1] + normal[2] * normal[2]], dtype=np.float64))
+
+    v3 = np.cross(normal, v2)
+
+    return v2, v3
+
+
+@numba.njit
+def max_dimension(v):
+    return 0 if v[0] > v[1] and v[0] > v[2] else 1 if v[1] > v[2] else 2
+
+
+@numba.njit
+def permute(point, x, y, z):
+    return np.array([point[x], point[y], point[z]])
+
+
+@numba.njit
+def max_component(v):
+    return max(v[0], max(v[1], v[2]))
+
+
+@numba.njit
+def get_machine_epsilon():
+    return np.finfo(np.float32).eps*0.5
+
+@numba.njit
+def gamma(n):
+    eps = get_machine_epsilon()
+    return (n * eps) / (1 - n * eps)
+
+
+@numba.experimental.jitclass([
+    ('intersected_point', numba.float64[:]),
+    ('incoming_direction', numba.float64[:]),
+    ('dpdu', numba.float64[:]),
+    # ('dpdv', numba.float64[:]),
+    ('triangle', PreComputedTriangle.class_type.instance_type),
+    ('normal', numba.float64[:]),
+    ('shading_normal', numba.float64[:])
+])
+class SurfaceInteraction:
+    def __init__(self, intersected_point, incoming_direction, dpdu, normal, shading_normal):
+        _intersected_point = intersected_point
+        self.intersected_point = np.append(intersected_point,1)
+        _incoming_direction = incoming_direction
+        self.incoming_direction = np.append(incoming_direction,0)
+        self.dpdu = dpdu
+        # self.dpdv = dpdv
+        # self.triangle = triangle
+        _normal = normal
+        self.normal = np.append(_normal,0)
+        _shading_normal = shading_normal
+        self.shading_normal = np.append(_shading_normal,0)
+
+
+@numba.njit
+def get_UVs():
+    return np.array([[0,0], [1,0], [1,1]])
+
+
+@numba.njit
 def pc_triangle_intersect(ray_origin, ray_direction, triangle):
-    trans_s = triangle.transformation[8] * ray_origin[0]+\
-              triangle.transformation[9] * ray_origin[1]+\
-              triangle.transformation[10] * ray_origin[2]+\
-              triangle.transformation[11]
-    trans_d = triangle.transformation[8] * ray_direction[0]\
-              +triangle.transformation[9] * ray_direction[1]\
-              +triangle.transformation[10] * ray_direction[2]
 
-    # t = (-(trans_s) / trans_d).item()
-    # print(-(trans_s) / trans_d)
-    t = (-(trans_s) / trans_d).item()
+    # print("--1--")
 
-    # print("-----")
-    # print(t)
-    # print("-----")
+    ray_origin = np.array([ray_origin[0], ray_origin[1], ray_origin[2]], dtype=np.float64)
+    ray_direction = np.array([ray_direction[0], ray_direction[1], ray_direction[2]], dtype=np.float64)
 
-    if t <= 0.0000001:
-        return None
+    p0 = np.array([triangle.vertex_1[0], triangle.vertex_1[1], triangle.vertex_1[2]], dtype=np.float64)
+    p1 = np.array([triangle.vertex_2[0], triangle.vertex_2[1], triangle.vertex_2[2]], dtype=np.float64)
+    p2 = np.array([triangle.vertex_3[0], triangle.vertex_3[1], triangle.vertex_3[2]], dtype=np.float64)
 
-    gc = ray_origin + t * ray_direction
+    # Transform triangle vertices to ray coordinate space
+    # Translate vertices based on ray origin
+    p0t = p0 - ray_origin
+    p1t = p1 - ray_origin
+    p2t = p2 - ray_origin
 
-    bary_x = triangle.transformation[0] * gc[0]\
-             + triangle.transformation[1] * gc[1]\
-             + triangle.transformation[2] * gc[2]\
-             + triangle.transformation[3]
-    bary_y = triangle.transformation[4] * gc[0]\
-             + triangle.transformation[5] * gc[1]\
-             + triangle.transformation[6] * gc[2]\
-             + triangle.transformation[7]
+    # print("--2--")
 
-    if bary_x >= 0 and bary_y >= 0 and bary_x+bary_y < 1:
-        return t
+    # Permute components of triangle vertices and ray direction
+    kz = max_dimension(np.abs(ray_direction))
+    kx = kz + 1
+    if kx == 3:
+        kx = 0
+    ky = kx + 1
+    if ky == 3:
+        ky = 0
+    d = permute(ray_direction, kx, ky, kz)
+    p0t = permute(p0t, kx, ky, kz)
+    p1t = permute(p1t, kx, ky, kz)
+    p2t = permute(p2t, kx, ky, kz)
 
-    return None
+    # print("--3--")
+
+    # Apply shear transformation to translated vertex positions
+    Sx = -d[0] / d[2]
+    Sy = -d[1] / d[2]
+    Sz = 1.0 / d[2]
+    p0t[0] += Sx * p0t[2]
+    p0t[1] += Sy * p0t[2]
+    p1t[0] += Sx * p1t[2]
+    p1t[1] += Sy * p1t[2]
+    p2t[0] += Sx * p2t[2]
+    p2t[1] += Sy * p2t[2]
+
+    # print("--4--")
+
+    # Compute edge function coefficients e0, e1, and e2
+    e0 = p1t[0] * p2t[1] - p1t[1] * p2t[0]
+    e1 = p2t[0] * p0t[1] - p2t[1] * p0t[0]
+    e2 = p0t[0] * p1t[1] - p0t[1] * p1t[0]
+
+    #TODO: Fall back to double precision test at triangle edges
+
+    # print("--5--")
+
+    # Perform triangle edge and determinant tests
+    if (e0 < 0 or e1 < 0 or e2 < 0) and (e0 > 0 or e1 > 0 or e2 > 0):
+        return None #, None
+    det = e0 + e1 + e2
+    if det == 0:
+        return None #, None
+
+    # print("--6--")
+
+    # Compute scaled hit distance to triangle and test against ray $t$ range
+    p0t[2] *= Sz
+    p1t[2] *= Sz
+    p2t[2] *= Sz
+
+    tScaled = e0 * p0t[2] + e1 * p1t[2] + e2 * p2t[2]
+
+    # print("--7--")
+
+    # ray.tMax=np.inf
+    if det < 0 and (tScaled >= 0 or tScaled < np.inf * det):
+        return None #, None
+    elif det > 0 and (tScaled <= 0 or tScaled > np.inf * det):
+        return None #, None
+
+    # Compute barycentric coordinates and t value for triangle intersection
+    invDet = 1 / det
+    b0 = e0 * invDet
+    b1 = e1 * invDet
+    b2 = e2 * invDet
+    t = tScaled * invDet
+
+    # print("--8--")
+
+    # Ensure that computed triangle t is conservatively greater than zero
+
+    # Compute delta_z term for triangle t error bounds
+    maxZt = max_component(np.abs(np.array([p0t[2], p1t[2], p2t[2]])))
+    deltaZ = gamma(3) * maxZt
+
+    # Compute delta_x and delta_y terms for triangle t error bounds
+    maxXt = max_component(np.abs(np.array([p0t[0], p1t[0], p2t[0]])))
+    maxYt = max_component(np.abs(np.array([p0t[1], p1t[1], p2t[1]])))
+    deltaX = gamma(5) * (maxXt + maxZt)
+    deltaY = gamma(5) * (maxYt + maxZt)
+
+    # print("--9--")
+
+    # Compute delta_e term for triangle t error bounds
+    deltaE = 2 * (gamma(2) * maxXt * maxYt + deltaY * maxXt + deltaX * maxYt)
+
+    # Compute delta_t term for triangle t error bounds and check t
+    maxE = max_component(np.abs(np.array([e0, e1, e2])))
+
+    # print(maxE)
+
+    deltaT = 3 * (gamma(3) * maxE * maxZt + deltaE * maxZt + deltaZ * maxE) * np.abs(invDet)
+
+    if t <= deltaT:
+        return None #, None
+
+    # print("--10--")
+
+    # Compute triangle partial derivatives
+    uv = get_UVs()
+
+    # Compute deltas for triangle partial derivatives
+    duv02 = uv[0] - uv[2]
+    duv12 = uv[1] - uv[2]
+    dp02 = p0 - p2
+    dp12 = p1 - p2
+
+    determinant = duv02[0] * duv12[1] - duv02[1] * duv12[0]
+
+    # print("--11--")
+
+    if determinant<EPSILON:
+        # Handle zero determinant for triangle partial derivative matrix
+        dpdu, dpdv = create_orthonormal_system(normalize(np.cross(p2 - p0, p1 - p0)))
+    else:
+        invdet = 1 / determinant
+        dpdu = ( duv12[1] * dp02 - duv02[1] * dp12) * invdet
+        dpdv = (-duv12[0] * dp02 + duv02[0] * dp12) * invdet
+
+    # print("--12--")
+
+    ## Compute error bounds for triangle intersection
+    # xAbsSum = (np.abs(b0 * p0[0]) + np.abs(b1 * p1[0]) + np.abs(b2 * p2[0]))
+    # yAbsSum = (np.abs(b0 * p0[1]) + np.abs(b1 * p1[1]) + np.abs(b2 * p2[1]))
+    # zAbsSum = (np.abs(b0 * p0[2]) + np.abs(b1 * p1[2]) + np.abs(b2 * p2[2]))
+    # pError = gamma(7) * np.array([xAbsSum, yAbsSum, zAbsSum])
+
+    # Interpolate (u,v) parametric coordinates and hit point
+    pHit = b0 * p0 + b1 * p1 + b2 * p2
+    # print(pHit)
+    uvHit = b0 * uv[0] + b1 * uv[1] + b2 * uv[2]
+
+    # Override surface normal in _isect_ for triangle
+    normal = shading_normal = normalize(np.cross(dp02, dp12))
+
+    # Fill in _SurfaceInteraction_ from triangle hit
+    # print(pHit.shape)
+    # print("Intersected")
+    # print(ray_direction)
+    # print(dpdu)
+    # print(dpdv)
+    # print(triangle)
+    # print(normal)
+    # print(shading_normal)
+
+    # isect = None
+
+    # isect = SurfaceInteraction(intersected_point=pHit,
+    #                            incoming_direction=-ray_direction,
+    #                            dpdu=dpdu,
+    #                            dpdv=dpdv,
+    #                            triangle=triangle,
+    #                            normal=normal,
+    #                            shading_normal=shading_normal)
+
+    isect = SurfaceInteraction(pHit, ray_direction, dpdu, normal, shading_normal)
+
+    return t #, isect

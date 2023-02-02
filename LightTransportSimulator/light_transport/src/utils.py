@@ -126,58 +126,54 @@ def concentric_sample_disk(u):
 
 
 @numba.njit
-def _cosine_weighted_hemisphere_sampling(normal_at_intersection):
+def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction, rand):
+    incoming_direction = -incoming_direction
     # random uniform samples
-    r1 = np.random.rand()
-    d = concentric_sample_disk(r1)
+    # r1 = np.random.rand()
+    u = np.array(rand, dtype=np.float64)
+    d = concentric_sample_disk(u)
     z = np.sqrt(max(0, 1 - d[0]**2 - d[1]**2))
 
-    random_point = np.array([d[0], d[1], z], dtype=np.float64)
+    outgoing_direction = np.array([d[0], d[1], z], dtype=np.float64)
 
     v2, v3 = create_orthonormal_system(normal_at_intersection)
 
-    # rot_x = np.dot(np.array([v2[0], v3[0], normal_at_intersection[0]], dtype=np.float64), random_point)
-    # rot_y = np.dot(np.array([v2[1], v3[1], normal_at_intersection[1]], dtype=np.float64), random_point)
-    # rot_z = np.dot(np.array([v2[2], v3[2], normal_at_intersection[2]], dtype=np.float64), random_point)
-    #
-    # global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
+    # #TODO: Check if reversing z required
+    if incoming_direction[2] < 0:
+        outgoing_direction[2] *= -1
 
-    global_ray_dir = np.array([random_point[0] * v2[0] + random_point[1] * v3[0] + random_point[2] * normal_at_intersection[0],
-                               random_point[0] * v2[1] + random_point[1] * v3[1] + random_point[2] * normal_at_intersection[1],
-                               random_point[0] * v2[2] + random_point[1] * v3[2] + random_point[2] * normal_at_intersection[2],
-                               0], dtype=np.float64)
+    # pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
+    if incoming_direction[2] * outgoing_direction[2] > 0:
+        pdf = abs(z)*inv_pi
+    else:
+        pdf = 0
 
-    pdf = abs(z)*inv_pi
+    outgoing_direction = np.array([outgoing_direction[0] * v2[0] + outgoing_direction[1] * v3[0] + outgoing_direction[2] * normal_at_intersection[0],
+                                   outgoing_direction[0] * v2[1] + outgoing_direction[1] * v3[1] + outgoing_direction[2] * normal_at_intersection[1],
+                                   outgoing_direction[0] * v2[2] + outgoing_direction[1] * v3[2] + outgoing_direction[2] * normal_at_intersection[2],
+                                   0], dtype=np.float64)
 
-    return global_ray_dir, pdf
+    # pdf = abs(z)*inv_pi
+
+    return outgoing_direction, pdf
 
 
 @numba.njit
-def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction):
+def _cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction, rand):
+    incoming_direction = -incoming_direction
     # random uniform samples
-    r1 = np.random.rand()
-    r2 = np.random.rand()
+    r1 = rand[0]
+    r2 = rand[1]
 
     phi = 2*np.pi*r2
     theta = np.arccos(np.sqrt(r1))
     cos_theta = np.cos(theta)
 
-    random_point = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), cos_theta], dtype=np.float64)
+    outgoing_direction = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), cos_theta], dtype=np.float64)
 
     v2, v3 = create_orthonormal_system(normal_at_intersection)
 
-    # rot_x = np.dot(np.array([v2[0], v3[0], normal_at_intersection[0]], dtype=np.float64), random_point)
-    # rot_y = np.dot(np.array([v2[1], v3[1], normal_at_intersection[1]], dtype=np.float64), random_point)
-    # rot_z = np.dot(np.array([v2[2], v3[2], normal_at_intersection[2]], dtype=np.float64), random_point)
-    #
-    # global_ray_dir = np.array([rot_x, rot_y, rot_z, 0], dtype=np.float64)
-
-    outgoing_direction = np.array([random_point[0] * v2[0] + random_point[1] * v3[0] + random_point[2] * normal_at_intersection[0],
-                               random_point[0] * v2[1] + random_point[1] * v3[1] + random_point[2] * normal_at_intersection[1],
-                               random_point[0] * v2[2] + random_point[1] * v3[2] + random_point[2] * normal_at_intersection[2],
-                               0], dtype=np.float64)
-
-    #TODO: Check if reversing z required
+    # #TODO: Check if reversing z required
     if incoming_direction[2] < 0:
         outgoing_direction[2] *= -1
 
@@ -187,5 +183,10 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_directi
     else:
         pdf = 0
     # pdf = np.abs(cos_theta)*inv_pi
+
+    outgoing_direction = np.array([outgoing_direction[0] * v2[0] + outgoing_direction[1] * v3[0] + outgoing_direction[2] * normal_at_intersection[0],
+                                   outgoing_direction[0] * v2[1] + outgoing_direction[1] * v3[1] + outgoing_direction[2] * normal_at_intersection[1],
+                                   outgoing_direction[0] * v2[2] + outgoing_direction[1] * v3[2] + outgoing_direction[2] * normal_at_intersection[2],
+                                   0], dtype=np.float64)
 
     return outgoing_direction, pdf
