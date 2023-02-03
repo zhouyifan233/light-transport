@@ -1,7 +1,7 @@
 import numba
 import numpy as np
 
-from .intersects import aabb_intersect
+from .intersects import aabb_intersect, intersect_bounds
 from .primitives import AABB, Triangle, PreComputedTriangle
 
 
@@ -30,20 +30,23 @@ node_type.define(Volume.class_type.instance_type)
 
 
 @numba.njit
-def traverse_bvh(bvh, ray_origin, ray_direction):
+def traverse_bvh(bvh, ray):
     shapes = numba.typed.List()
 
-    if aabb_intersect(ray_origin, ray_direction, bvh.box):
+    inv_dir = 1/ray.direction
+
+    # if aabb_intersect(ray_origin, ray_direction, bvh.box):
+    if intersect_bounds(bvh.box, ray, inv_dir):
         if bvh.left is None and bvh.right is None:
             for _s in bvh.root:
                 # if _s not in shapes:
                 shapes.append(_s)
         if bvh.left is not None:
-            for _s in traverse_bvh(bvh.left, ray_origin, ray_direction):
+            for _s in traverse_bvh(bvh.left, ray):
                 # if _s not in shapes:
                 shapes.append(_s)
         if bvh.right is not None:
-            for _s in traverse_bvh(bvh.right, ray_origin, ray_direction):
+            for _s in traverse_bvh(bvh.right, ray):
                 # if _s not in shapes:
                 shapes.append(_s)
 
