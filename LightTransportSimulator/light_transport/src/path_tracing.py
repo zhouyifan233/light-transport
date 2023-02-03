@@ -15,7 +15,7 @@ from .vectors import normalize
 
 
 @numba.njit
-def trace_path(scene, bvh, ray, bounce, rand):
+def trace_path(scene, primitives, bvh, ray, bounce, rand):
     throughput = np.ones((3), dtype=np.float64)
     light = np.zeros((3), dtype=np.float64)
     specular_bounce = False
@@ -25,15 +25,19 @@ def trace_path(scene, bvh, ray, bounce, rand):
         if bounce>=scene.max_depth:
             break
 
-        _rand = rand[0]#np.random.rand()
+        rand_0 = rand[0][bounce]
+        rand_1 = rand[1][bounce]
 
         # intersect ray with scene
-        nearest_object, min_distance, intersection, surface_normal = hit_object(bvh, ray.origin, ray.direction)
+        nearest_object, min_distance, intersection, surface_normal = hit_object(primitives, bvh, ray)
 
         # terminate path if no intersection is found
         if nearest_object is None:
             # no object was hit
             break
+
+        # intersection = isect.intersected_point
+        # surface_normal = isect.normal
 
         # add emitted light at intersection
         if nearest_object.is_light and bounce==0:
@@ -48,10 +52,10 @@ def trace_path(scene, bvh, ray, bounce, rand):
         if nearest_object.material.is_diffuse:
             shadow_ray_origin = intersection + EPSILON * surface_normal
             # direct light contribution
-            direct_light = cast_one_shadow_ray(scene, bvh, nearest_object, shadow_ray_origin, surface_normal)
+            direct_light = cast_one_shadow_ray(scene, primitives, bvh, nearest_object, shadow_ray_origin, surface_normal)
 
             # indirect light contribution
-            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction, rand)
+            indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction, [rand_0, rand_1])
 
             if pdf==0:
                 break
@@ -68,7 +72,7 @@ def trace_path(scene, bvh, ray, bounce, rand):
 
             throughput *= brdf * cos_theta / pdf
 
-            indirect_light = throughput * trace_path(scene, bvh, ray, bounce+1, rand)
+            indirect_light = throughput * trace_path(scene, primitives, bvh, ray, bounce+1, rand)
 
             light += (direct_light+indirect_light)
 
@@ -102,7 +106,7 @@ def trace_path(scene, bvh, ray, bounce, rand):
             cos_theta = -(np.dot(ray.direction, surface_normal))
             _sqrt = 1 - (Nr**2) * (1 - cos_theta**2)
 
-            if _sqrt > 0 and _rand>reflection_prob:
+            if _sqrt > 0 and rand_0>reflection_prob:
                 # refraction
                 ray.origin = intersection + (-EPSILON * surface_normal)
                 transmit_direction = (ray.direction * Nr) + (surface_normal * (Nr * cos_theta - np.sqrt(_sqrt)))
@@ -120,7 +124,7 @@ def trace_path(scene, bvh, ray, bounce, rand):
         # terminate path using russian roulette
         if bounce>3:
             r_r = max(0.05, 1-throughput[1]) # russian roulette factor
-            if _rand<r_r:
+            if rand_0<r_r:
                 break
             throughput /= 1-r_r
 
@@ -132,7 +136,7 @@ def trace_path(scene, bvh, ray, bounce, rand):
 
 
 @numba.njit(parallel=True)
-def render_scene(scene, bvh):
+def render_scene(scene, primitives, bvh):
     top_bottom = np.linspace(scene.top, scene.bottom, scene.height)
     left_right = np.linspace(scene.left, scene.right, scene.width)
     pix_count = 0
@@ -147,13 +151,13 @@ def render_scene(scene, bvh):
                 # screen is on origin
                 end = np.array([x, y, scene.f_distance, 1], dtype=np.float64) # pixel
                 # anti-aliasing
-                end[0] += rand[0]/scene.width
-                end[1] += rand[0]/scene.height
+                end[0] += rand[0][0]/scene.width
+                end[1] += rand[0][0]/scene.height
                 origin = np.array([scene.camera[0], scene.camera[1], scene.camera[2], 1], dtype=np.float64)
                 direction = normalize(end - origin)
                 ray = Ray(origin, direction)
                 # for k in range(scene.max_depth):
-                color += trace_path(scene, bvh, ray, 0, rand)
+                color += trace_path(scene, primitives, bvh, ray, 0, rand)
                 alpha = estimate_alpha(color)
             color = color/scene.number_of_samples
             scene.image[i, j] = np.clip(color, 0, 1)

@@ -146,7 +146,7 @@ def partition_pred(x, n_buckets, centroid_bounds, dim, min_cost_split_bucket):
 
 
 def build_bvh(primitives, bounded_boxes, start, end, ordered_prims, total_nodes):
-    split_method = 0 # 0: surface area heuristics, 1: mid point, 2: alternative median
+    split_method = 2 # 0: surface area heuristics, 1: mid point, 2: alternative median
     n_boxes = len(bounded_boxes)
     max_prims_in_node = int(0.1*n_boxes)
     max_prims_in_node = max_prims_in_node if max_prims_in_node<10 else 10
@@ -360,81 +360,60 @@ def flatten_bvh(linear_nodes, node, offset):
 
 
 @numba.njit
-def intersect_bvh(ray_origin, ray_direction, linear_bvh, primitives):
+def intersect_bvh(ray, primitives, linear_bvh):
     triangle = None
-    current_t = np.inf
+    current_t = ray.tmax
     current_isect = None
 
-    inv_dir = 1/ray_direction
+    inv_dir = 1/ray.direction
 
-    _id = np.random.randint(1000)
+    # _id = np.random.randint(1000)
 
     dir_is_neg = [inv_dir[0] < 0, inv_dir[1] < 0, inv_dir[2] < 0]
     to_visit_offset = 0
     current_node_index = 0
-    nodes_to_visit = [1000 for _ in range(64)] #
-    visited_nodes = [False for _ in range(len(linear_bvh))]
+    nodes_to_visit = [0 for _ in range(64)] #
+    # visited_nodes = [False for _ in range(len(linear_bvh))]
 
     while True:
-        if not visited_nodes[current_node_index]:
-            visited_nodes[current_node_index] = True
-            node = linear_bvh[int(current_node_index)]
-            # print(str(_id)+"Current Node: "+str(current_node_index)+"\n")
-            # print(str(_id)+"To Visit Offset: "+str(to_visit_offset)+"\n")
-            if intersect_bounds(node.bounds, ray_origin, ray_direction, inv_dir, dir_is_neg):
-            # if aabb_intersect(ray_origin, ray_direction, node.bounds):
-                if node.n_primitives > 0:
-                    # print(str(_id)+"Primitives found at: "+str(current_node_index)+"\n")
-                    for i in range(node.primitives_offset, node.primitives_offset+node.n_primitives):
-                        t, isect = pc_triangle_intersect(ray_origin, ray_direction, primitives[i])
-                        if t is None:
-                            continue
-                        if EPSILON < t < current_t:
+        node = linear_bvh[int(current_node_index)]
+        # print(str(_id)+"Current Node: "+str(current_node_index)+"\n")
+        # print(str(_id)+"To Visit Offset: "+str(to_visit_offset)+"\n")
+        if intersect_bounds(node.bounds, ray, inv_dir):
+        # if aabb_intersect(ray_origin, ray_direction, node.bounds):
+            if node.n_primitives > 0:
+                # print(str(_id)+"Primitives found at: "+str(current_node_index)+"\n")
+                for i in range(node.n_primitives):
+                    t, isect = pc_triangle_intersect(ray.origin, ray.direction, primitives[node.primitives_offset+i])
+                    if t is not None:
+                        if EPSILON < t < ray.tmax:
                             current_t = t
+                            ray.tmax = t
                             triangle = primitives[i]
                             current_isect = isect
-                    if to_visit_offset == 0:
-                        # print(str(_id)+"Break due to visit offset zero \n")
-                        break
-                    to_visit_offset -= 1
-                    current_node_index = nodes_to_visit[to_visit_offset]
-                    # print(str(_id)+"From if, next: "+str(current_node_index)+"\n")
-                else:
-                    if dir_is_neg[node.axis]:
-                        nodes_to_visit[to_visit_offset] = current_node_index + 1
-                        to_visit_offset += 1
-                        current_node_index = node.second_child_offset
-                        # print(str(_id)+"Direction is negative, next: "+str(current_node_index)+"\n")
-                    else:
-                        nodes_to_visit[to_visit_offset] = node.second_child_offset
-                        to_visit_offset += 1
-                        current_node_index += 1
-                        # print(str(_id)+"Direction is positive, next: "+str(current_node_index)+"\n")
-            else:
                 if to_visit_offset == 0:
-                    all_visited = True
-                    for i in range(len(visited_nodes)):
-                        if not visited_nodes[i]:
-                            all_visited = False
-                            current_node_index = i
-                            break
-                    if all_visited:
-                        # print(str(_id)+"Break due to visit offset zero, from else \n")
-                        break
-                else:
-                    to_visit_offset -= 1
-                    current_node_index = nodes_to_visit[to_visit_offset]
-                    # print(str(_id)+"From else, next: "+str(current_node_index)+"\n")
-
-        else:
-            all_visited = True
-            for i in range(len(visited_nodes)):
-                if not visited_nodes[i]:
-                    all_visited = False
-                    current_node_index = i
+                    # print(str(_id)+"Break due to visit offset zero \n")
                     break
-            if all_visited:
-                # print(str(_id)+"Break due to all visited, from else \n")
+                to_visit_offset -= 1
+                current_node_index = nodes_to_visit[to_visit_offset]
+                # print(str(_id)+"From if, next: "+str(current_node_index)+"\n")
+            else:
+                if dir_is_neg[node.axis]:
+                    nodes_to_visit[to_visit_offset] = current_node_index + 1
+                    to_visit_offset += 1
+                    current_node_index = node.second_child_offset
+                    # print(str(_id)+"Direction is negative, next: "+str(current_node_index)+"\n")
+                else:
+                    nodes_to_visit[to_visit_offset] = node.second_child_offset
+                    to_visit_offset += 1
+                    current_node_index += 1
+                    # print(str(_id)+"Direction is positive, next: "+str(current_node_index)+"\n")
+        else:
+            if to_visit_offset == 0:
                 break
+
+            to_visit_offset -= 1
+            current_node_index = nodes_to_visit[to_visit_offset]
+            # print(str(_id)+"From else, next: "+str(current_node_index)+"\n")
 
     return triangle, current_t, current_isect

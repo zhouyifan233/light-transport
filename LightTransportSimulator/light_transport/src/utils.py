@@ -4,6 +4,7 @@ import numpy as np
 import numba
 
 from .bvh import traverse_bvh
+from .bvh_new import intersect_bvh
 from .constants import inv_2_pi, pi_over_4, pi_over_2, inv_pi
 from .intersects import sphere_intersect, triangle_intersect, plane_intersect, __triangle_intersect, pc_triangle_intersect
 from .primitives import Triangle, Sphere, Plane, ShapeOptions
@@ -49,20 +50,21 @@ def nearest_intersected_object(objects, ray_origin, ray_direction, t0=0.0, t1=np
 
 
 @numba.njit
-def hit_object(bvh, ray_origin, ray_direction):
+def hit_object(primitives, bvh, ray):
     # get hittable objects
-    objects = traverse_bvh(bvh, ray_origin, ray_direction)
+    objects = traverse_bvh(bvh, ray)
     # check for intersections
-    nearest_object, min_distance = nearest_intersected_object(objects, ray_origin, ray_direction)
+    nearest_object, min_distance = nearest_intersected_object(objects, ray.origin, ray.direction)
+    # nearest_object, min_distance, isect = intersect_bvh(ray, primitives, bvh)
 
     if nearest_object is None:
         # no object was hit
         return None, None, None, None
 
-    intersection = ray_origin + min_distance * ray_direction
-    surface_normal = nearest_object.normal
+    intersected_point = ray.origin + min_distance * ray.direction
+    normal = nearest_object.normal
 
-    return nearest_object, min_distance, intersection, surface_normal
+    return nearest_object, min_distance, intersected_point, normal
 
 
 @numba.njit

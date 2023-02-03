@@ -176,29 +176,26 @@ def aabb_intersect(ray_origin, ray_direction, box):
 
 
 @numba.njit
-def intersect_bounds(bounds, ray_origin, ray_direction, inv_dir, dir_is_neg):
-    # check for ray intersection against x and y slabs
-    tmin = ((bounds.max_point[0] if dir_is_neg[0] else bounds.min_point[0]) - ray_origin[0]) * inv_dir[0]
-    tmax = ((bounds.min_point[0] if dir_is_neg[0] else bounds.max_point[0]) - ray_origin[0]) * inv_dir[0]
-    tymin = ((bounds.max_point[1] if dir_is_neg[1] else bounds.min_point[1]) - ray_origin[1]) * inv_dir[1]
-    tymax = ((bounds.min_point[1] if dir_is_neg[1] else bounds.max_point[1]) - ray_origin[1]) * inv_dir[1]
-    if tmin > tymax or tymin > tmax:
-        return False
-    if tymin > tmin:
-        tmin = tymin
-    if tymax < tmax:
-        tmax = tymax
+def intersect_bounds(bounds, ray, inv_dir, hit0=None, hit1=None):
+    t0 = 0
+    t1 = ray.tmax
+    for i in range(3):
+        t_near = (bounds.min_point[i]-ray.origin[i])*inv_dir[i]
+        t_far = (bounds.max_point[i]-ray.origin[i])*inv_dir[i]
+        if t_near>t_far:
+            t_near, t_far = t_far, t_near
+        t_far *= 1+2*gamma(3)
+        t0 = t_near if t_near>t0 else t0
+        t1 = t_far if t_far<t1 else t1
+        if t0>t1:
+            return False
+    if hit0 is not None:
+        hit0=t0
+    if hit1 is not None:
+        hit1=t1
+    return True
 
-    # check for ray intersection against z slab
-    tzmin = ((bounds.max_point[2] if dir_is_neg[2] else bounds.min_point[2]) - ray_origin[2]) * inv_dir[2]
-    tzmax = ((bounds.min_point[2] if dir_is_neg[2] else bounds.max_point[2]) - ray_origin[2]) * inv_dir[2]
-    if tmin > tzmax or tzmin > tmax:
-        return False
-    if tzmin > tmin:
-        tmin = tzmin
-    if tzmax < tmax:
-        tmax = tzmax
-    return (tmin < np.inf) and (tmax > EPSILON)
+
 
 
 @numba.njit
@@ -326,10 +323,10 @@ def pc_triangle_intersect(ray_origin, ray_direction, triangle):
 
     # Perform triangle edge and determinant tests
     if (e0 < 0 or e1 < 0 or e2 < 0) and (e0 > 0 or e1 > 0 or e2 > 0):
-        return None #, None
+        return None, None
     det = e0 + e1 + e2
     if det == 0:
-        return None #, None
+        return None, None
 
     # print("--6--")
 
@@ -344,9 +341,9 @@ def pc_triangle_intersect(ray_origin, ray_direction, triangle):
 
     # ray.tMax=np.inf
     if det < 0 and (tScaled >= 0 or tScaled < np.inf * det):
-        return None #, None
+        return None, None
     elif det > 0 and (tScaled <= 0 or tScaled > np.inf * det):
-        return None #, None
+        return None, None
 
     # Compute barycentric coordinates and t value for triangle intersection
     invDet = 1 / det
@@ -382,7 +379,7 @@ def pc_triangle_intersect(ray_origin, ray_direction, triangle):
     deltaT = 3 * (gamma(3) * maxE * maxZt + deltaE * maxZt + deltaZ * maxE) * np.abs(invDet)
 
     if t <= deltaT:
-        return None #, None
+        return None, None
 
     # print("--10--")
 
@@ -445,4 +442,4 @@ def pc_triangle_intersect(ray_origin, ray_direction, triangle):
 
     isect = SurfaceInteraction(pHit, ray_direction, dpdu, normal, shading_normal)
 
-    return t #, isect
+    return t, isect
