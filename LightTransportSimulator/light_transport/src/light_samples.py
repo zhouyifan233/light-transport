@@ -42,14 +42,15 @@ def cast_one_shadow_ray(scene, primitives, bvh, intersected_object, intersection
     shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
     shadow_ray = Ray(intersection_point, shadow_ray_direction)
 
-    _objects = traverse_bvh(bvh, shadow_ray)
-    _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
-    # _, min_distance, _ = intersect_bvh(shadow_ray, primitives, bvh)
+    # _objects = traverse_bvh(bvh, shadow_ray)
+    # _objects = intersect_bvh(shadow_ray, primitives, bvh)
+    # _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
+    _, min_distance = intersect_bvh(shadow_ray, primitives, bvh)
 
     if min_distance is None:
         return light_contrib # black background- unlikely
 
-    visible = min_distance >= shadow_ray_magnitude
+    visible = min_distance >= shadow_ray_magnitude-EPSILON
     if visible:
         brdf = (light.material.emission * light.material.color.diffuse) * (intersected_object.material.color.diffuse * inv_pi)
         cos_theta = np.dot(intersection_normal, shadow_ray_direction)

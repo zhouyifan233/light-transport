@@ -1,3 +1,4 @@
+from .constants import EPSILON
 from .material import Material
 from .vectors import normalize
 import numpy as np
@@ -106,66 +107,105 @@ class PreComputedTriangle:
         self.is_light = is_light
         self.edge_1 = vertex_2-vertex_1
         self.edge_2 = vertex_3-vertex_1
-        _normal = normalize(np.cross(self.edge_1[:-1], self.edge_2[:-1]))
-        self.normal = np.append(_normal,0)
-        self.num = np.dot(self.vertex_1, self.normal)
+        _normal = np.cross(self.edge_1[:3], self.edge_2[:3])
+        self.normal = np.append(normalize(_normal),0)
+        self.num = np.dot(self.vertex_1[:3], _normal)
         self.transformation = np.zeros(shape=(12,1), dtype=np.float64)
-        if abs(self.normal[0]) > abs(self.normal[1])  and  abs(self.normal[0]) > abs(self.normal[2]):
+
+        if abs(_normal[0]) > abs(_normal[1])  and  abs(_normal[0]) > abs(_normal[2]):
 
             x1 = self.vertex_2[1] * self.vertex_1[2] - self.vertex_2[2] * self.vertex_1[1]
             x2 = self.vertex_3[1] * self.vertex_1[2] - self.vertex_3[2] * self.vertex_1[1]
 
             self.transformation[0] = 0.0
-            self.transformation[1] = self.edge_2[2] / self.normal[0]
-            self.transformation[2] = -self.edge_2[1] / self.normal[0]
-            self.transformation[3] = x2 / self.normal[0]
+            self.transformation[1] = self.edge_2[2] / _normal[0]
+            self.transformation[2] = -self.edge_2[1] / _normal[0]
+            self.transformation[3] = x2 / _normal[0]
 
             self.transformation[4] = 0.0
-            self.transformation[5] = -self.edge_1[2] / self.normal[0]
-            self.transformation[6] = self.edge_1[1] / self.normal[0]
-            self.transformation[7] = -x1 / self.normal[0]
+            self.transformation[5] = -self.edge_1[2] / _normal[0]
+            self.transformation[6] = self.edge_1[1] / _normal[0]
+            self.transformation[7] = -x1 / _normal[0]
 
             self.transformation[8] = 1.0
-            self.transformation[9] = self.normal[1] / self.normal[0]
-            self.transformation[10] = self.normal[2] / self.normal[0]
-            self.transformation[11] = -self.num / self.normal[0]
+            self.transformation[9] = _normal[1] / _normal[0]
+            self.transformation[10] = _normal[2] / _normal[0]
+            self.transformation[11] = -self.num / _normal[0]
 
-        elif abs(self.normal[1]) > abs(self.normal[2]):
+        elif abs(_normal[1]) > abs(_normal[2]):
 
             x1 = self.vertex_2[2] * self.vertex_1[0] - self.vertex_2[0] * self.vertex_1[2]
             x2 = self.vertex_3[2] * self.vertex_1[0] - self.vertex_3[0] * self.vertex_1[2]
 
-            self.transformation[0] = -self.edge_2[2] / self.normal[1]
+            self.transformation[0] = -self.edge_2[2] / _normal[1]
             self.transformation[1] = 0.0
-            self.transformation[2] = self.edge_2[0] / self.normal[1]
-            self.transformation[3] = x2 / self.normal[1]
+            self.transformation[2] = self.edge_2[0] / _normal[1]
+            self.transformation[3] = x2 / _normal[1]
 
-            self.transformation[4] = self.edge_1[2] / self.normal[1]
+            self.transformation[4] = self.edge_1[2] / _normal[1]
             self.transformation[5] = 0.0
-            self.transformation[6] = -self.edge_1[0] / self.normal[1]
-            self.transformation[7] = -x1 / self.normal[1]
+            self.transformation[6] = -self.edge_1[0] / _normal[1]
+            self.transformation[7] = -x1 / _normal[1]
 
-            self.transformation[8] = self.normal[0] / self.normal[1]
+            self.transformation[8] = _normal[0] / _normal[1]
             self.transformation[9] = 1.0
-            self.transformation[10] = self.normal[2] / self.normal[1]
-            self.transformation[11] = -self.num / self.normal[1]
+            self.transformation[10] = _normal[2] / _normal[1]
+            self.transformation[11] = -self.num / _normal[1]
 
-        elif abs(self.normal[2]) > 0.0:
+        elif abs(_normal[2]) > 0.0:
 
             x1 = self.vertex_2[0] * self.vertex_1[1] - self.vertex_2[1] * self.vertex_1[0]
             x2 = self.vertex_3[0] * self.vertex_1[1] - self.vertex_3[1] * self.vertex_1[0]
 
-            self.transformation[0] = self.edge_2[1] / self.normal[2]
-            self.transformation[1] = -self.edge_2[0] / self.normal[2]
+            self.transformation[0] = self.edge_2[1] / _normal[2]
+            self.transformation[1] = -self.edge_2[0] / _normal[2]
             self.transformation[2] = 0.0
-            self.transformation[3] = x2 / self.normal[2]
+            self.transformation[3] = x2 / _normal[2]
 
-            self.transformation[4] = -self.edge_1[1] / self.normal[2]
-            self.transformation[5] = self.edge_1[0] / self.normal[2]
+            self.transformation[4] = -self.edge_1[1] / _normal[2]
+            self.transformation[5] = self.edge_1[0] / _normal[2]
             self.transformation[6] = 0.0
-            self.transformation[7] = -x1 / self.normal[2]
+            self.transformation[7] = -x1 / _normal[2]
 
-            self.transformation[8] = self.normal[0] / self.normal[2]
-            self.transformation[9] = self.normal[1] / self.normal[2]
+            self.transformation[8] = _normal[0] / _normal[2]
+            self.transformation[9] = _normal[1] / _normal[2]
             self.transformation[10] = 1.0
-            self.transformation[11] = -self.num / self.normal[2]
+            self.transformation[11] = -self.num / _normal[2]
+
+    def intersect(self, ray):
+
+        # Get barycentric z components of ray origin and direction for calculation of t value
+        trans_s = (self.transformation[8] * ray.origin[0] +
+                   self.transformation[9] * ray.origin[1] +
+                   self.transformation[10] * ray.origin[2] +
+                   self.transformation[11])
+        trans_d = (self.transformation[8] * ray.direction[0] +
+                   self.transformation[9] * ray.direction[1] +
+                   self.transformation[10] * ray.direction[2])
+
+        ta = -trans_s / trans_d
+
+        # Reject negative t values and rays parallel to triangle
+        if ta <= EPSILON or ta >= ray.tmax:
+            return None
+
+        # Get global coordinates of ray's intersection with triangle's plane.
+        wr = ray.origin + ta * ray.direction
+
+        # Calculate "x" and "y" barycentric coordinates
+        xg = (self.transformation[0] * wr[0] +
+              self.transformation[1] * wr[1] +
+              self.transformation[2] * wr[2] +
+              self.transformation[3])
+        yg = (self.transformation[4] * wr[0] +
+              self.transformation[5] * wr[1] +
+              self.transformation[6] * wr[2] +
+              self.transformation[7])
+
+        # final intersection test
+        if xg >= 0.0 and yg >= 0.0 and yg + xg < 1.0:
+            return ta.item()
+
+        return None
+
+
