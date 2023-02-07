@@ -52,10 +52,11 @@ def nearest_intersected_object(objects, ray_origin, ray_direction, t0=0.0, t1=np
 @numba.njit
 def hit_object(primitives, bvh, ray):
     # get hittable objects
-    objects = traverse_bvh(bvh, ray)
+    # objects = traverse_bvh(bvh, ray)
+    # objects = intersect_bvh(ray, primitives, bvh)
     # check for intersections
-    nearest_object, min_distance = nearest_intersected_object(objects, ray.origin, ray.direction)
-    # nearest_object, min_distance, isect = intersect_bvh(ray, primitives, bvh)
+    # nearest_object, min_distance = nearest_intersected_object(objects, ray.origin, ray.direction)
+    nearest_object, min_distance = intersect_bvh(ray, primitives, bvh)
 
     if nearest_object is None:
         # no object was hit

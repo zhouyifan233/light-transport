@@ -146,7 +146,7 @@ def partition_pred(x, n_buckets, centroid_bounds, dim, min_cost_split_bucket):
 
 
 def build_bvh(primitives, bounded_boxes, start, end, ordered_prims, total_nodes):
-    split_method = 2 # 0: surface area heuristics, 1: mid point, 2: alternative median
+    split_method = 1 # 0: surface area heuristics, 1: mid point, 2: alternative median
     n_boxes = len(bounded_boxes)
     max_prims_in_node = int(0.1*n_boxes)
     max_prims_in_node = max_prims_in_node if max_prims_in_node<10 else 10
@@ -266,10 +266,6 @@ def build_bvh(primitives, bounded_boxes, start, end, ordered_prims, total_nodes)
 
                 # if mid!=start and mid!=end:
                 #     break
-            else:
-                # partition primitives using median
-                mid = start+(end-start)//2
-                bounded_boxes[start:end] = sorted(bounded_boxes[start:end], key=lambda x: x.bounds.centroid[dim], reverse=False)
 
         # print(start, mid, end)
 
@@ -360,10 +356,8 @@ def flatten_bvh(linear_nodes, node, offset):
 
 
 @numba.njit
-def intersect_bvh(ray, primitives, linear_bvh):
-    triangle = None
-    current_t = ray.tmax
-    current_isect = None
+def __intersect_bvh(ray, primitives, linear_bvh):
+    triangles = []
 
     inv_dir = 1/ray.direction
 
@@ -384,13 +378,9 @@ def intersect_bvh(ray, primitives, linear_bvh):
             if node.n_primitives > 0:
                 # print(str(_id)+"Primitives found at: "+str(current_node_index)+"\n")
                 for i in range(node.n_primitives):
-                    t, isect = pc_triangle_intersect(ray.origin, ray.direction, primitives[node.primitives_offset+i])
+                    t = triangle_intersect(ray.origin, ray.direction, primitives[node.primitives_offset+i])
                     if t is not None:
-                        if EPSILON < t < ray.tmax:
-                            current_t = t
-                            ray.tmax = t
-                            triangle = primitives[i]
-                            current_isect = isect
+                        triangles.append(primitives[node.primitives_offset+i])
                 if to_visit_offset == 0:
                     # print(str(_id)+"Break due to visit offset zero \n")
                     break
@@ -416,4 +406,77 @@ def intersect_bvh(ray, primitives, linear_bvh):
             current_node_index = nodes_to_visit[to_visit_offset]
             # print(str(_id)+"From else, next: "+str(current_node_index)+"\n")
 
-    return triangle, current_t, current_isect
+    return triangles
+
+
+
+@numba.njit
+def intersect_bvh(ray, primitives, linear_bvh):
+    current_idx = 0
+    triangle = None
+    visited = [False for _ in range(len(linear_bvh))]
+    inv_dir = 1/ray.direction
+    dir_is_neg = [inv_dir[0] < 0, inv_dir[1] < 0, inv_dir[2] < 0]
+    min_distance = ray.tmax
+
+    while True:
+        # print(current_idx, visited)
+        # if current_idx>=len(linear_bvh):
+        #     # print("Why here??")
+        if not visited[current_idx]:
+            node = linear_bvh[int(current_idx)]
+            visited[current_idx] = True
+            if intersect_bounds(node.bounds, ray, inv_dir):
+                if node.n_primitives>0:
+                    # leaf node
+                    for i in range(node.n_primitives):
+                        leaf_idx = node.primitives_offset+i
+                        # if leaf_idx>=len(primitives):
+                        #     print("Something went wrong!?!:-"+str(node.primitives_offset))
+                        visited[leaf_idx] = True
+                        t = triangle_intersect(ray.origin, ray.direction, primitives[leaf_idx])
+                        if t is not None and EPSILON<t<min_distance:
+                            min_distance = t
+                            # triangles.append(primitives[leaf_idx])
+                            triangle = primitives[leaf_idx]
+                    if current_idx==0:
+                        # no interior nodes
+                        break
+                    all_visited = True
+                    for i in range(len(visited)):
+                        if not visited[i]:
+                            all_visited = False
+                            current_idx = i
+                    if all_visited:
+                        # print("All visited!")
+                        break
+                else:
+                    # interior node
+                    if dir_is_neg[node.axis]:
+                        current_idx=node.second_child_offset
+                    else:
+                        current_idx+=1
+            else:
+                if current_idx==0:
+                    # ray doesn't intersect the tree
+                    break
+                all_visited = True
+                for i in range(len(visited)):
+                    if not visited[i]:
+                        all_visited = False
+                        current_idx = i
+                if all_visited:
+                    # print("All visited!")
+                    break
+        else:
+            all_visited = True
+            for i in range(len(visited)):
+                if not visited[i]:
+                    all_visited = False
+                    current_idx = i
+            if all_visited:
+                # print("All visited!")
+                break
+
+    # print("No of triangles:-"+str(len(triangles)))
+    return triangle, min_distance
