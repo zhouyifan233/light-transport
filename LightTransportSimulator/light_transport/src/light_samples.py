@@ -11,7 +11,7 @@ from LightTransportSimulator.light_transport.src.scene import Light
 from LightTransportSimulator.light_transport.src.utils import nearest_intersected_object, uniform_hemisphere_sampling, \
     cosine_weighted_hemisphere_sampling, create_orthonormal_system
 from LightTransportSimulator.light_transport.src.vectors import normalize
-from LightTransportSimulator.light_transport.src.vertex import Vertex
+from LightTransportSimulator.light_transport.src.vertex import Vertex, create_light_vertex
 
 
 def generate_area_light_samples(tri_1, tri_2, source_mat, number_of_samples, total_area):
@@ -97,16 +97,8 @@ def sample_light(scene):
 
     light_ray = Ray(light_ray_origin, light_ray_direction)
 
-    pdf_pos = 1/light.total_area
-
     # create light vertex
-    light_vertex = Vertex(point=light_ray.origin,
-                        g_norm=light.normal,
-                        pdf_pos=pdf_pos,
-                        pdf_dir=pdf_dir,
-                        color=light.material.color,
-                        importance=importance,
-                        medium=Medium.LIGHT.value)
+    light_vertex = create_light_vertex(light, pdf_dir, 0)
 
     light_choice_pdf = 1 # 1/no_of_lights
     light_pdf = light_choice_pdf * (1/light.total_area)

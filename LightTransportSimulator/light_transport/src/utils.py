@@ -129,15 +129,24 @@ def concentric_sample_disk(u):
 
 
 @numba.njit
+def sample_cosine_hemisphere(u):
+    d = concentric_sample_disk(u)
+    z = np.sqrt(max(0, 1 - d[0]**2 - d[1]**2))
+    return np.array([d[0], d[1], z], dtype=np.float64)
+
+
+@numba.njit
+def get_cosine_hemisphere_pdf(cos_theta):
+    return cos_theta*inv_pi
+
+
+@numba.njit
 def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction, rand):
     incoming_direction = -incoming_direction
     # random uniform samples
     # r1 = np.random.rand()
     u = np.array(rand, dtype=np.float64)
-    d = concentric_sample_disk(u)
-    z = np.sqrt(max(0, 1 - d[0]**2 - d[1]**2))
-
-    outgoing_direction = np.array([d[0], d[1], z], dtype=np.float64)
+    outgoing_direction = sample_cosine_hemisphere(u)
 
     v2, v3 = create_orthonormal_system(normal_at_intersection)
 
@@ -147,7 +156,7 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_directi
 
     # pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
     if incoming_direction[2] * outgoing_direction[2] > 0:
-        pdf = abs(z)*inv_pi
+        pdf = get_cosine_hemisphere_pdf(np.abs(outgoing_direction[2])) # pass the z-axis
     else:
         pdf = 0
 

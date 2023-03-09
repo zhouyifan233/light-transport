@@ -19,12 +19,16 @@ class Light:
 
 @numba.experimental.jitclass([
     ('position', numba.float64[:]),
-    ('focal_length', numba.intp)
+    ('focal_length', numba.optional(numba.intp)),
+    ('normal', numba.optional(numba.float64[:])),
+    ('area', numba.optional(numba.float64))
 ])
 class Camera:
-    def __init__(self, position, focal_length):
+    def __init__(self, position):
         self.position = position
-        self.focal_length = focal_length
+        self.focal_length = None
+        self.normal = None
+        self.screen_area = None
 
 
 @numba.experimental.jitclass([
