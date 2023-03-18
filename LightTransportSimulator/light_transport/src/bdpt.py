@@ -3,19 +3,19 @@ import math
 import numba
 import numpy as np
 
-from LightTransportSimulator.light_transport.src.bdpt_utils import convert_density, get_pdf, get_light_origin_pdf, \
-    get_light_pdf, get_camera_pdf, get_bsdf_pdf
+from LightTransportSimulator.light_transport.src.bdpt_utils import get_pdf, get_light_origin_pdf, \
+    get_light_pdf, get_camera_pdf, get_bsdf_pdf, sample_to_add_light
 from LightTransportSimulator.light_transport.src.brdf import get_reflected_direction, sample_diffuse, sample_mirror, \
-    sample_specular
+    sample_specular, bxdf
 from LightTransportSimulator.light_transport.src.bvh_new import intersect_bvh
-from LightTransportSimulator.light_transport.src.constants import EPSILON, inv_pi, Medium, ZEROS
+from LightTransportSimulator.light_transport.src.constants import EPSILON, inv_pi, Medium, ZEROS, TransportMode, ONES
 from LightTransportSimulator.light_transport.src.control_variates import calculate_dlogpdu
 from LightTransportSimulator.light_transport.src.light_samples import sample_light, cast_one_shadow_ray
 from LightTransportSimulator.light_transport.src.rays import Ray
 from LightTransportSimulator.light_transport.src.utils import hit_object, cosine_weighted_hemisphere_sampling
 from LightTransportSimulator.light_transport.src.vectors import normalize
 from LightTransportSimulator.light_transport.src.vertex import Vertex, create_camera_vertex, create_surface_vertex, \
-    create_light_vertex
+    create_light_vertex, convert_density, is_on_surface, is_connectible, get_vertex_color
 
 
 @numba.njit
@@ -39,10 +39,21 @@ def random_walk(scene, primitives, bvh, ray, vertices, throughput, pdf, max_dept
         # terminate path if no intersection is found
         if nearest_object is None:
             # no object was hit
+            if mode==TransportMode.RADIANCE.value:
+                vertices = sample_to_add_light(scene, primitives, bvh, vertices)
+                bounce+= 1
             break
 
         # create new vertex with intersection info
-        current_vertex = create_surface_vertex(intersection, throughput, pdf_fwd, vertices[-1])
+        mat_color = nearest_object.material.color.diffuse
+        current_vertex = create_surface_vertex(intersection,
+                                               ray.direction,
+                                               surface_normal,
+                                               min_distance,
+                                               throughput,
+                                               mat_color,
+                                               pdf_fwd,
+                                               vertices[-1])
 
         bounce+= 1
 
@@ -52,13 +63,17 @@ def random_walk(scene, primitives, bvh, ray, vertices, throughput, pdf, max_dept
         if nearest_object.material.is_diffuse:
             # diffuse surface
             new_ray_direction, pdf_fwd, brdf, intr_type = sample_diffuse(nearest_object, surface_normal, ray, [rand_0, rand_1])
+            current_vertex.intr_type = intr_type
         elif nearest_object.material.is_mirror:
             # perfect mirror reflection
             new_ray_direction, pdf_fwd, brdf, intr_type = sample_mirror(nearest_object, surface_normal, ray, [rand_0, rand_1])
             current_vertex.is_delta = True
+            current_vertex.intr_type = intr_type
         elif nearest_object.material.transmittance>0.0:
             # specular reflection (only dielectric materials)
-            new_ray_direction, pdf_fwd, brdf, intr_type = sample_specular(nearest_object, surface_normal, ray, [rand_0, rand_1])
+            current_vertex.is_delta = True
+            new_ray_direction, pdf_fwd, brdf, intr_type = sample_specular(nearest_object, surface_normal, ray, [rand_0, rand_1], mode)
+            current_vertex.intr_type = intr_type
         else:
             # error in material metadata
             break
@@ -66,21 +81,26 @@ def random_walk(scene, primitives, bvh, ray, vertices, throughput, pdf, max_dept
         if pdf_fwd==0:
             break
 
-        throughput *= brdf * np.abs(np.dot(new_ray_direction, surface_normal)) / pdf_fwd
+        cos_theta = np.abs(np.dot(new_ray_direction, surface_normal))
 
-        pdf_rev = get_bsdf_pdf(new_ray_direction, ray.direction) # n.b. reverse order
+        throughput = throughput * brdf * cos_theta / pdf_fwd
+
+        if current_vertex.is_delta:
+            pdf_rev = pdf_fwd = 0
+        else:
+            pdf_rev = get_bsdf_pdf(new_ray_direction, ray.direction) # n.b. reverse order
 
         # change ray origin
-        if intr_type == Medium.DIFFUSE.value or intr_type == Medium.MIRROR.value or intr_type == Medium.REFLECTION.value:
-            ray.origin = intersection + EPSILON * new_ray_direction
-        else:
+        if current_vertex.intr_type==Medium.REFRACTION.value:
             ray.origin = intersection + (-EPSILON * new_ray_direction)
+        else:
+            ray.origin = intersection + EPSILON * new_ray_direction
 
         # change ray direction
         ray.direction = new_ray_direction
 
         # Compute reverse area density at preceding vertex
-        vertices[-1].pdf_rev = convert_density(pdf_rev, vertices[-1].point, current_vertex.point)
+        vertices[-1].pdf_rev = convert_density(pdf_rev, vertices[-1], current_vertex)
 
         # add current vertex to the list of vertices
         vertices.append(current_vertex)
@@ -89,19 +109,36 @@ def random_walk(scene, primitives, bvh, ray, vertices, throughput, pdf, max_dept
 
 
 @numba.njit
-def generate_light_subpaths(scene, bvh, primitives, rand_idx):
-    #TODO: Implement all the conditions that would return None
-
+def generate_light_subpaths(scene, bvh, primitives, max_depth, rand_idx):
     light_vertices = numba.typed.List() # will contain the vertices on the path starting from light
 
+    rand_0 = scene.rand_0[int(rand_idx[0]), int(rand_idx[1]), int(rand_idx[2]), 0]
+    rand_1 = scene.rand_1[int(rand_idx[0]), int(rand_idx[1]), int(rand_idx[2]), 0]
+
+    if max_depth==0:
+        return light_vertices
+
     # sample initial light ray
-    light_ray, light_vertex, throughput = sample_light(scene)
+    light_ray, light_vertex, throughput = sample_light(scene, [rand_0, rand_1])
+
+    if light_vertex.pdf_dir==0 or light_vertex.pdf_pos==0:
+        return light_vertices
 
     # add the first vertex: light source
     light_vertices.append(light_vertex)
 
     # start random walk
-    light_vertices = random_walk(scene, primitives, bvh, light_ray, light_vertices, throughput, light_vertex.pdf_dir, scene.max_depth-1, rand_idx, 1)
+    light_vertices = random_walk(scene,
+                                 primitives,
+                                 bvh,
+                                 light_ray,
+                                 light_vertices,
+                                 throughput,
+                                 light_vertex.pdf_dir,
+                                 max_depth-1,
+                                 rand_idx,
+                                 TransportMode.IMPORTANCE.value
+                                 )
 
     return light_vertices
 
@@ -109,20 +146,19 @@ def generate_light_subpaths(scene, bvh, primitives, rand_idx):
 @numba.njit
 def setup_camera(scene, left_right, top_bottom):
     # computes the area of the visible screen and the camera normal
-    if scene.camera.screen_area is not None:
-        screen_area = scene.camera.screen_area
-    else:
-        screen_area = (left_right[-1]-left_right[0])*(top_bottom[-1]-top_bottom[0])
+    if scene.camera.screen_area is None:
+        scene.camera.screen_area = (left_right[-1]-left_right[0])*(top_bottom[-1]-top_bottom[0])
 
-    if scene.camera.normal is not None:
-        camera_normal = scene.camera.camera_normal
-    else:
-        camera_plane_point_1 = camera_plane_point_2 = scene.camera
+    cam = scene.camera.position[:3]
+
+    if scene.camera.normal is None:
+        camera_plane_point_1 = camera_plane_point_2 = cam
         camera_plane_point_1[1] = camera_plane_point_1[1]+1
         camera_plane_point_2[1] = camera_plane_point_2[1]-1
-        camera_normal = normalize(np.cross(camera_plane_point_1-scene.camera, camera_plane_point_2-scene.camera))
+        _normal = normalize(np.cross(camera_plane_point_1-cam, camera_plane_point_2-cam))
+        scene.camera.normal = np.append(_normal, 0)
 
-    return screen_area, camera_normal
+    return scene
 
 
 @numba.njit
@@ -138,7 +174,7 @@ def get_camera_importance(screen_area, cos_theta):
 
 
 @numba.njit
-def generate_camera_subpaths(scene, bvh, primitives, end, origin, screen_area, camera_normal, max_depth, rand_idx):
+def generate_camera_subpaths(scene, bvh, primitives, origin, end, max_depth, rand_idx):
     camera_vertices = numba.typed.List() # will contain the vertices on the path starting from camera
 
     if max_depth==0:
@@ -148,23 +184,34 @@ def generate_camera_subpaths(scene, bvh, primitives, end, origin, screen_area, c
     end[0] += _rand/700
     end[1] += _rand/700
     direction = normalize(end - origin)
+    ray_magnitude = np.linalg.norm(end - origin)
     ray = Ray(origin, direction)
 
-    cos_theta = np.dot(ray.direction, camera_normal)
+    cos_theta = np.dot(ray.direction, scene.camera.normal)
 
-    pdf_pos, pdf_dir = get_camera_pdf(screen_area, cos_theta)
+    pdf_pos, pdf_dir = get_camera_pdf(scene.camera.screen_area, cos_theta)
 
     # importance = get_camera_importance(screen_area, cos_theta)
 
-    throughput = 1 # 1 for simple camera model, otherwise a floating-point value that affects how much
+    throughput = 1.0 # 1 for simple camera model, otherwise a floating-point value that affects how much
     # the radiance arriving at the film plane along the generated ray will contribute to the final image.
 
     # camera is starting vertex for backward-path-tracing
-    cam_vertex = create_camera_vertex(ray.origin, camera_normal, pdf_pos, pdf_dir, throughput)
+    cam_vertex = create_camera_vertex(ray.origin, ray.direction, scene.camera.normal, ray_magnitude, pdf_pos, pdf_dir, throughput)
 
     camera_vertices.append(cam_vertex)
 
-    camera_vertices = random_walk(scene, primitives, bvh, ray, camera_vertices, throughput, cam_vertex.pdf_dir, max_depth-1, rand_idx, 1)
+    camera_vertices = random_walk(scene,
+                                  primitives,
+                                  bvh,
+                                  ray,
+                                  camera_vertices,
+                                  throughput,
+                                  cam_vertex.pdf_dir,
+                                  max_depth-1,
+                                  rand_idx,
+                                  TransportMode.RADIANCE.value
+                                  )
 
     return camera_vertices
 
@@ -230,11 +277,22 @@ def get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t):
     return 1/(1+sum_ri)
 
 
-def get_light(vx):
-    if vx.medium != Medium.LIGHT.value:
-        return np.zeros((3), dtype=np.float64)
+@numba.njit
+def get_light(scene, curr_v, next_v):
+    if next_v.medium != Medium.LIGHT.value:
+        return ZEROS
 
-    return vx.throughput
+    w = normalize(next_v.point - curr_v.point)
+
+    random_light_index = np.random.choice(len(scene.lights), 1)[0]
+    light = scene.lights[random_light_index]
+
+    if np.dot(light.normal, w)>0:
+        throughput = light.material.emission*light.material.color.diffuse
+    else:
+        throughput = ZEROS
+
+    return throughput
 
 
 # @numba.njit
@@ -247,26 +305,19 @@ def get_light(vx):
 #     return pdf
 
 
-@numba.njit
-def is_on_surface(vertex):
-    if (vertex.medium == Medium.DIFFUSE.value) or \
-            (vertex.medium == Medium.MIRROR.value) or \
-            (vertex.medium == Medium.SPECULAR.value):
-        return True
-    return False
-
 
 @numba.njit
 def G(vertex_0, vertex_1, primitives, bvh):
-    d = normalize(vertex_1.point-vertex_0.point)
-    m = np.linalg.norm(vertex_1.point-vertex_0.point)
+    d = normalize(vertex_0.point-vertex_1.point)
+    r = Ray(vertex_1.point, d)
+    m = np.linalg.norm(vertex_0.point-vertex_1.point)
     g = 1/m**2
     if is_on_surface(vertex_0):
         g *= np.abs(np.dot(vertex_0.g_norm, d))
     if is_on_surface(vertex_1):
         g *= np.abs(np.dot(vertex_1.g_norm, d))
 
-    _, min_distance = intersect_bvh(d, primitives, bvh)
+    _, min_distance = intersect_bvh(r, primitives, bvh)
     if min_distance is None or min_distance >= m:
         # vertex_0 and vertex_1 connectible
         vis = 1
@@ -276,15 +327,10 @@ def G(vertex_0, vertex_1, primitives, bvh):
 
 
 
-
-
-
-
-
 @numba.njit
-def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, t, s):
+def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t):
     light = np.zeros((3), dtype=np.float64)
-    sampled = Vertex(np.array([np.inf, np.inf, np.inf]))
+    sampled = None
 
     # check for invalid connections
     if t > 1 and s != 0 and camera_vertices[t - 1].medium == Medium.LIGHT.value:
@@ -294,67 +340,107 @@ def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, t, s)
     if s==0:
         # consider camera subpath as the entire path
         if camera_vertices[t-1].medium == Medium.LIGHT.value:
-            light += get_light(camera_vertices[t-2]) * camera_vertices[t-1].throughput
+            light += get_light(scene, camera_vertices[t-1], camera_vertices[t-2]) * (camera_vertices[t-1].throughput * get_vertex_color(camera_vertices[t-1]))
 
 
     elif t==1:
         # connect camera to a light subpath
-        light_p = light_vertices[s-1].point
-        # sample a point on the camera
-        sampled = camera_vertices[0]
-        # check if the camera is visible from the current vertex
-        new_path = normalize(sampled.point - light_p)
-        new_path_magnitude = np.linalg.norm(sampled.point - light_p)
+        qs = light_vertices[s-1]
 
-        _, min_distance = intersect_bvh(new_path, primitives, bvh)
-
-        if min_distance is None or min_distance >= new_path_magnitude:
-            # no object in between, camera is visible
-            light += light_vertices[s-1].throughput*light_vertices[s-1].bsdf*cam.throughput
-
-
-    elif s==1:
-        # connect the camera subpath with a light sample
-        camera_vertex = camera_vertices[t-1].point
-        # sample a point on the light
-        random_light_index = np.random.choice(len(scene.lights), 1)[0]
-        sampled_light = scene.lights[random_light_index]
-
-        # check if the light is visible from the current vertex
-        new_path = normalize(sampled_light.source - camera_vertex)
-        new_path_magnitude = np.linalg.norm(sampled_light.source - camera_vertex)
-        pdf = get_light_pdf(sampled_light, camera_vertex)
-        light_choice_pdf = 1
-        if pdf>0:
-            # create a light vertex
-            sampled = create_light_vertex(sampled_light, pdf, 0)
-            sampled.throughput = sampled_light.material.emission/(pdf*light_choice_pdf)
-            sampled.pdf_pos = 1/sampled_light.total_area
-            sampled.pdf_fwd = light_choice_pdf*sampled.pdf_pos
-            sampled.color = sampled_light.material.color
-
-            total_light = sampled.color * sampled.throughput
+        if is_connectible(qs):
+            # sample a point on the camera
+            cam = camera_vertices[0]
+            # check if the camera is visible from the current vertex
+            new_path_direction = normalize(cam.point - qs.point)
+            new_path = Ray(qs.point, new_path_direction)
+            new_path_magnitude = np.linalg.norm(cam.point - qs.point)
 
             _, min_distance = intersect_bvh(new_path, primitives, bvh)
 
             if min_distance is None or min_distance >= new_path_magnitude:
-                # light is visible
-                light +=  total_light * camera_vertices[t-1].throughput
+                # no object in between, camera is visible
+                cos_theta = np.dot(new_path_direction, scene.camera.normal)
+                cos2_theta = cos_theta**2
+                pdf_dir = (new_path_magnitude**2) / (np.abs(np.dot(scene.camera.normal, new_path_direction)) * 1) # lens_area = 1
+                pdf_pos = 1
 
-            if is_on_surface(camera_vertices[t - 1]):
-                light *= np.abs(np.dot(new_path, camera_vertices[t - 1].g_norm))
+                throughput = 1 / (scene.camera.screen_area * 1 * cos2_theta * cos2_theta)
+                # throughput = np.array([throughput])
+                if pdf_dir>0:
+                    sampled = create_camera_vertex(cam.point, new_path_direction, scene.camera.normal, new_path_magnitude, pdf_pos, pdf_dir, throughput/pdf_dir)
+                    L = (qs.throughput * get_vertex_color(qs)) * bxdf(qs, sampled) * sampled.throughput
+                    if is_on_surface(qs):
+                        L *= np.abs(np.dot(new_path_direction, qs.g_norm))
+                    light+=L
+
+
+    elif s==1:
+        # connect the camera subpath with a light sample
+        pt = camera_vertices[t-1]
+
+        if is_connectible(pt):
+            # sample a point on the light
+            random_light_index = np.random.choice(len(scene.lights), 1)[0]
+            sampled_light = scene.lights[random_light_index]
+
+            # check if the light is visible from the current vertex
+            new_path_direction = normalize(sampled_light.source - pt.point)
+            new_path = Ray(pt.point, new_path_direction)
+            new_path_magnitude = np.linalg.norm(sampled_light.source - pt.point)
+
+            _, min_distance = intersect_bvh(new_path, primitives, bvh)
+
+            if min_distance is None or min_distance >= new_path_magnitude:
+                # light is visible, create a vertex
+                sampled = create_light_vertex(sampled_light, new_path_direction, new_path_magnitude, 0, 0)
+                pdf = get_light_pdf(sampled, pt)
+
+                if pdf==0 or new_path_magnitude==0:
+                    pdf = 0
+                    light_throughput = 0
+                else:
+                    if np.dot(sampled_light.normal, new_path_direction)>0:
+                        light_throughput = sampled_light.material.emission
+                    else:
+                        light_throughput = 0
+
+                light_pdf = 1
+
+                if pdf>0 and not np.array_equal(light_throughput, ZEROS):
+                    # update light vertex
+                    sampled.pdf_dir = pdf
+                    sampled.throughput = light_throughput/(pdf*light_pdf)
+                    sampled.color = sampled_light.material.color.diffuse
+                    sampled.pdf_pos = 1/sampled_light.total_area
+                    sampled.pdf_fwd = get_light_origin_pdf(scene, sampled, pt)
+                    sampled.color = sampled_light.material.color.diffuse
+
+                    L = (pt.throughput * get_vertex_color(pt)) * bxdf(pt, sampled) * (sampled.throughput * sampled.color)
+
+                    if is_on_surface(pt):
+                        L *= np.abs(np.dot(new_path_direction, pt.g_norm))
+
+                    light += L
 
 
     else:
         # follow rest of the strategies
-        light += light_vertices[s-1].throughput * camera_vertices[t-1].throughput
-        light *= G(light_vertices[s-1], camera_vertices[t-1], primitives, bvh)
+        qs = light_vertices[s-1]
+        pt = camera_vertices[t-1]
+
+        if is_connectible(qs) and is_connectible(pt):
+            L = (qs.throughput*get_vertex_color(qs)) * bxdf(qs, pt) * bxdf(pt, qs) * (pt.throughput*get_vertex_color(pt))
+            if not np.array_equal(L, ZEROS):
+                L *= G(qs, pt, primitives, bvh)
+
+            light += L
+
 
     # compute MIS-weights for the above connection strategies
     if np.array_equal(light, ZEROS):
         mis_weight = 0.0
     else:
-        mis_weight = get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t)
+        mis_weight = 1 #get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t)
 
     light *= mis_weight
 
@@ -369,7 +455,7 @@ def render_scene(scene, primitives, bvh):
     left_right = np.linspace(scene.left, scene.right, scene.width)
     pix_count = 0
 
-    screen_area, camera_normal = setup_camera(scene, left_right, top_bottom)
+    scene = setup_camera(scene, left_right, top_bottom)
 
     for i in numba.prange(scene.height):
         y = top_bottom[i]
@@ -385,10 +471,11 @@ def render_scene(scene, primitives, bvh):
                 # anti-aliasing
                 end[0] += rand[0][0]/scene.width
                 end[1] += rand[0][0]/scene.height
-                origin = np.array([scene.camera[0], scene.camera[1], scene.camera[2], 1], dtype=np.float64)
+                cam = scene.camera.position
+                origin = np.array([cam[0], cam[1], cam[2], 1], dtype=np.float64)
                 #TODO: implement better ray differentials, e.g. PBRT
-                camera_vertices = generate_camera_subpaths(scene, bvh, primitives, end, origin, screen_area, camera_normal, scene.max_depth+2, rand_idx)
-                light_vertices = generate_light_subpaths(scene, bvh, primitives, rand_idx)
+                camera_vertices = generate_camera_subpaths(scene, bvh, primitives, origin, end, scene.max_depth+2, rand_idx)
+                light_vertices = generate_light_subpaths(scene, bvh, primitives, scene.max_depth+1, rand_idx)
 
                 camera_n = len(camera_vertices)
                 light_n = len(light_vertices)
@@ -399,7 +486,7 @@ def render_scene(scene, primitives, bvh):
                         if (s == 1 and t == 1) or depth<0 or depth > scene.max_depth:
                             continue
 
-                        color += connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, t, s)
+                        color += connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t)
 
             color = color/scene.number_of_samples
             scene.image[i, j] = np.clip(color, 0, 1)

@@ -195,7 +195,8 @@ def render_scene(scene, primitives, bvh):
                 # anti-aliasing
                 end[0] += rand[0][0]/scene.width
                 end[1] += rand[0][0]/scene.height
-                origin = np.array([scene.camera[0], scene.camera[1], scene.camera[2], 1], dtype=np.float64)
+                cam = scene.camera.position
+                origin = np.array([cam[0], cam[1], cam[2], 1], dtype=np.float64)
                 direction = normalize(end - origin)
                 ray = Ray(origin, direction)
                 # for k in range(scene.max_depth):

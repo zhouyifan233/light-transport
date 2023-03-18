@@ -2,7 +2,7 @@ import numba
 import numpy as np
 from numba import jit
 
-from LightTransportSimulator.light_transport.src.constants import inv_pi, ZEROS, Medium
+from LightTransportSimulator.light_transport.src.constants import inv_pi, ZEROS, Medium, TransportMode
 from LightTransportSimulator.light_transport.src.utils import cosine_weighted_hemisphere_sampling
 from LightTransportSimulator.light_transport.src.vectors import normalize
 
@@ -85,7 +85,7 @@ def fresnel_dielectric(cos_theta_i, n1, n2):
 
 
 @numba.njit
-def oren_nayar_f(nearest_object, old_ray, new_ray):
+def oren_nayar_f(old_ray, new_ray):
     sigma = np.radians(0.25)
     sigma2 = sigma * sigma
     A = 1 - (sigma2 / (2 * (sigma2 + 0.33)))
@@ -113,23 +113,21 @@ def oren_nayar_f(nearest_object, old_ray, new_ray):
         sin_alpha = sin_theta_n
         tan_beta = sin_theta_o / np.abs(old_ray[2])
 
-    return nearest_object.material.reflectance * inv_pi * (A + B * max_cos * sin_alpha * tan_beta)
+    return  inv_pi * (A + B * max_cos * sin_alpha * tan_beta)
 
 
 @numba.njit
 def sample_diffuse(nearest_object, surface_normal, ray, rand):
     new_ray_direction, pdf_fwd = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction, rand)
     new_ray_direction = normalize(new_ray_direction)
-    brdf = oren_nayar_f(nearest_object, ray.direction, new_ray_direction)
+    brdf = nearest_object.material.reflectance * oren_nayar_f(ray.direction, new_ray_direction)
     intr_type = Medium.DIFFUSE.value
     return new_ray_direction, pdf_fwd, brdf, intr_type
 
 
 @numba.njit
 def sample_mirror(nearest_object, surface_normal, ray, rand):
-    ray_d = ray.direction
-    new_ray_direction = np.array([-ray_d[0], -ray_d[1], ray_d[2], 0])
-    new_ray_direction = normalize(new_ray_direction)
+    new_ray_direction = get_reflected_direction(ray.direction, surface_normal)
     pdf_fwd = 1
     fr, _ = fresnel_dielectric(np.abs(new_ray_direction[2]), 1, nearest_object.material.ior)
     brdf =  fr * nearest_object.material.reflectance/np.abs(new_ray_direction[2])
@@ -200,7 +198,7 @@ def __sample_specular(nearest_object, surface_normal, ray, rand):
 
 
 @numba.njit
-def sample_specular(nearest_object, surface_normal, ray, rand):
+def sample_specular(nearest_object, surface_normal, ray, rand, mode=TransportMode.RADIANCE.value):
     # use Fresnel
     n1 = 1
     n2 = nearest_object.material.ior
@@ -234,8 +232,23 @@ def sample_specular(nearest_object, surface_normal, ray, rand):
             brdf = (nearest_object.material.transmittance * (1-fr))/np.abs(outgoing_direction[2])
             # Account for non-symmetry with transmission to different medium
             # iff mode is radiance (and not importance)
-            brdf *= (n1/n2)**2
+            if mode==TransportMode.RADIANCE.value:
+                brdf *= (n1/n2)**2
             pdf = 1-fr
             intr_type = Medium.REFRACTION.value
 
     return outgoing_direction, pdf, brdf, intr_type
+
+
+@numba.njit
+def bxdf(prev_v, next_v):
+    # camera or light endpoints should not arrive here
+    w = normalize(next_v.point - prev_v.point)
+    if prev_v.medium==Medium.SURFACE.value:
+        if prev_v.intr_type==Medium.DIFFUSE.value:
+            return oren_nayar_f(prev_v.ray_direction, w)
+        else:
+            # for all other specular events
+            return 0
+    else:
+        return 0

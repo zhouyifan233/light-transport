@@ -25,6 +25,12 @@ class Medium(enum.Enum):
     NONE = 0
 
 
+class TransportMode(enum.Enum):
+    RADIANCE = 1
+    IMPORTANCE = 2
+    NONE = 0
+
+
 WHITE = Color(ambient=np.array([1, 1, 1], dtype=np.float64),
               diffuse=np.array([1, 1, 1], dtype=np.float64),
               specular=np.array([1, 1, 1], dtype=np.float64))
