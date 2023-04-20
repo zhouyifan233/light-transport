@@ -31,7 +31,9 @@ def get_camera_pdf(screen_area, cos_theta):
 
 @numba.njit
 def get_bsdf_pdf(wp, wn):
-    if wp[2]*wn[2]>0:
+    if wp is None:
+        return get_cosine_hemisphere_pdf(np.abs(wn[2]))
+    elif wp[2]*wn[2]>0:
         return get_cosine_hemisphere_pdf(np.abs(wn[2]))
     else:
         return 0
@@ -70,13 +72,14 @@ def get_pdf(scene, pre_v, curr_v, next_v):
 
     # Compute directions to preceding and next vertex
     wn = normalize(next_v.point-curr_v.point)
-    if pre_v.medium!=Medium.NONE.value:
+    if pre_v is not None and pre_v.medium!=Medium.NONE.value:
         wp = normalize(pre_v.point-curr_v.point)
 
     # Compute directional density depending on the vertex type
     if curr_v.medium==Medium.CAMERA.value:
         cos_theta = np.dot(wn, scene.camera.normal)
-        return get_camera_pdf(scene.camera.screen_area, cos_theta)
+        pdf_pos, pdf_dir = get_camera_pdf(scene.camera.screen_area, cos_theta)
+        return pdf_dir
     elif curr_v.medium==Medium.SURFACE.value:
         pdf = get_bsdf_pdf(wp, wn)
         pdf = convert_density(pdf, next_v, curr_v)

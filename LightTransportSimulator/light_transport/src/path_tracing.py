@@ -5,7 +5,7 @@ import numpy as np
 
 from .brdf import *
 from .bvh import traverse_bvh
-from .constants import inv_pi, EPSILON
+from .constants import inv_pi, EPSILON, MatType
 from .control_variates import calculate_dlogpdu, estimate_alpha
 from .light_samples import cast_one_shadow_ray
 from .rays import Ray
@@ -42,7 +42,7 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
         # surface_normal = isect.normal
 
         # add emitted light at intersection
-        if nearest_object.is_light and bounce==0:
+        if bounce==0:
             light += nearest_object.material.emission * throughput
 
         ray_inside_object = False
@@ -125,14 +125,14 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
         #     # error
         #     break
         shadow_ray_origin = intersection + EPSILON * surface_normal
-        direct_light = cast_one_shadow_ray(scene, primitives, bvh, nearest_object, shadow_ray_origin, surface_normal)
-        if nearest_object.material.is_diffuse:
+        direct_light = ZEROS #cast_one_shadow_ray(scene, primitives, bvh, nearest_object, shadow_ray_origin, surface_normal)
+        if nearest_object.material.type==MatType.DIFFUSE.value:
             # diffuse surface
             new_ray_direction, pdf_fwd, brdf, intr_type = sample_diffuse(nearest_object, surface_normal, ray, [rand_0, rand_1])
-        elif nearest_object.material.is_mirror:
+        elif nearest_object.material.type==MatType.MIRROR.value:
             # perfect mirror reflection
             new_ray_direction, pdf_fwd, brdf, intr_type = sample_mirror(nearest_object, surface_normal, ray, [rand_0, rand_1])
-        elif nearest_object.material.transmittance>0.0:
+        elif nearest_object.material.type==MatType.SPECULAR.value:
             # specular reflection (only dielectric materials)
             new_ray_direction, pdf_fwd, brdf, intr_type = sample_specular(nearest_object, surface_normal, ray, [rand_0, rand_1])
         else:

@@ -117,127 +117,127 @@ def oren_nayar_f(old_ray, new_ray):
 
 
 @numba.njit
-def sample_diffuse(nearest_object, surface_normal, ray, rand):
-    new_ray_direction, pdf_fwd = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction, rand)
+def sample_diffuse(nearest_object_material, surface_normal, ray):
+    new_ray_direction, pdf_fwd = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction)
     new_ray_direction = normalize(new_ray_direction)
-    brdf = nearest_object.material.reflectance * oren_nayar_f(ray.direction, new_ray_direction)
+    brdf = 1 * oren_nayar_f(ray.direction, new_ray_direction)
     intr_type = Medium.DIFFUSE.value
     return new_ray_direction, pdf_fwd, brdf, intr_type
 
 
 @numba.njit
-def sample_mirror(nearest_object, surface_normal, ray, rand):
+def sample_mirror(nearest_object_material, surface_normal, ray):
     new_ray_direction = get_reflected_direction(ray.direction, surface_normal)
     pdf_fwd = 1
-    fr, _ = fresnel_dielectric(np.abs(new_ray_direction[2]), 1, nearest_object.material.ior)
-    brdf =  fr * nearest_object.material.reflectance/np.abs(new_ray_direction[2])
+    fr, _ = fresnel_dielectric(np.abs(new_ray_direction[2]), 1, nearest_object_material.ior)
+    brdf =  fr * 1/np.abs(new_ray_direction[2]) # reflectance is 1 for perfect mirrors
     intr_type = Medium.MIRROR.value
     return new_ray_direction, pdf_fwd, brdf, intr_type
 
 
 @numba.njit
-def __sample_specular(nearest_object, surface_normal, ray, rand):
-    # use Fresnel
-    cos_theta_i = max(-1, min(1, ray.direction[2]))
-    entering = cos_theta_i>0
-
-    if not entering:
-        eta = nearest_object.material.ior
-        cos_theta_i = np.abs(cos_theta_i)
-    else:
-        eta = 1/nearest_object.material.ior
-
-    # R0 = ((1-eta)/(1+eta))**2
-    #
-    # if np.dot(surface_normal, ray.direction)>0:
-    #     surface_normal = -surface_normal
-    #     eta = 1/eta
-    #
-    # eta = 1/eta
-
-    fr, cos_theta_t = fresnel_dielectric(cos_theta_i, eta)
-
-    # cos_theta_i = -(np.dot(ray.direction, surface_normal))
-    # cos2_theta_t = 1 - (eta**2) * (1 - cos_theta_i**2)
-    #
-    # fr = R0 + (1-R0) * (1 - cos_theta_i)**5 # Schlick's approximation
-
-    if fr==1:
-        # total internal reflection
-        pdf_fwd = 0
-        ray_d = ray.direction
-        new_ray_direction = np.array([-ray_d[0], -ray_d[1], ray_d[2], 0])
-        new_ray_direction = normalize(new_ray_direction)
-        brdf = 0
-        intr_type = Medium.REFLECTION.value
-
-    else:
-
-        if rand[0]>fr:
-            # refraction
-            pdf_fwd = 1-fr
-            new_ray_direction = (ray.direction * eta) + \
-                                (surface_normal * (eta * cos_theta_i - cos_theta_t))
-            new_ray_direction = normalize(new_ray_direction)
-            brdf = (nearest_object.material.transmittance * (1-fr))/np.abs(new_ray_direction[2])
-            # Account for non-symmetry with transmission to different medium
-            # iff mode is radiance (and not importance)
-            brdf *= eta**2
-            intr_type = Medium.REFRACTION.value
-
-        else:
-            # reflection
-            pdf_fwd = fr
-            ray_d = ray.direction
-            new_ray_direction = np.array([-ray_d[0], -ray_d[1], ray_d[2], 0])
-            new_ray_direction = normalize(new_ray_direction)
-            brdf = fr * nearest_object.material.reflectance/np.abs(new_ray_direction[2])
-            intr_type = Medium.REFLECTION.value
-
-    return new_ray_direction, pdf_fwd, brdf, intr_type
+def reflectance0(n1, n2):
+    sqrt_R0 = np.float64(n1 - n2) / (n1 + n2)
+    return sqrt_R0 * sqrt_R0
 
 
 @numba.njit
-def sample_specular(nearest_object, surface_normal, ray, rand, mode=TransportMode.RADIANCE.value):
-    # use Fresnel
-    n1 = 1
-    n2 = nearest_object.material.ior
+def schlick_reflectance(n1, n2, c):
+    R0 = reflectance0(n1, n2)
+    return R0 + (1.0 - R0) * c * c * c * c * c
 
-    # Calculate the reflection and refraction probabilities
-    cos_theta_i = np.dot(-ray.direction, surface_normal)
-    if cos_theta_i < 0:
-        surface_normal = -surface_normal
-        cos_theta_i = np.dot(-ray.direction, surface_normal)
-    eta = n1 / n2
 
-    fr, sin2_theta_t = fresnel_dielectric(cos_theta_i, n1, n2)
+@numba.njit
+def sample_specular(nearest_object_material, surface_normal, ray):
+    d = ray.direction
+    n = surface_normal
 
-    # check reflection or refraction
-    if rand[0] < fr:
+    n_out = 1
+    n_in = nearest_object_material.ior
+    n_out, n_in = np.float64(n_out), np.float64(n_in)
+
+    reflected_direction = get_reflected_direction(d, n)
+
+    # switch n if ray inside object
+    out_to_in = np.dot(n, d) < 0
+    nl = n if out_to_in else -n
+    eta = n_out / n_in if out_to_in else n_in / n_out
+
+    cos_theta = np.dot(d, nl)
+    cos2_phi = 1.0 - eta * eta * (1.0 - cos_theta * cos_theta)
+
+    # Total Internal Reflection
+    if cos2_phi < 0:
+        intr_type = Medium.TIR.value
+        pdf = 0
+        brdf = 1.0
+        return reflected_direction, pdf, 1.0, intr_type
+
+    transmitted_direction = normalize(eta * d - nl * (eta * cos_theta + np.sqrt(cos2_phi)))
+    c = 1.0 - (-cos_theta if out_to_in else np.dot(transmitted_direction, n))
+
+    Re = schlick_reflectance(n_out, n_in, c)
+    p_Re = 0.25 + 0.5 * Re
+
+    if np.random.random() < p_Re:
         # reflection
-        outgoing_direction = ray.direction - 2 * np.dot(ray.direction, surface_normal) * surface_normal
-        brdf = fr * nearest_object.material.reflectance/np.abs(outgoing_direction[2])
-        pdf = fr
         intr_type = Medium.REFLECTION.value
+        pdf = Re
+        brdf = Re / p_Re
+        return reflected_direction, pdf, brdf, intr_type
     else:
-        if sin2_theta_t > 1:
-            # total internal reflection
-            outgoing_direction = ray.direction - 2 * np.dot(ray.direction, surface_normal) * surface_normal
-            brdf = 0
-            pdf = 0
-            intr_type = Medium.REFLECTION.value
-        else:
-            # refraction
-            outgoing_direction = eta * ray.direction + (eta * cos_theta_i - np.sqrt(1 - sin2_theta_t)) * surface_normal
-            brdf = (nearest_object.material.transmittance * (1-fr))/np.abs(outgoing_direction[2])
-            # Account for non-symmetry with transmission to different medium
-            # iff mode is radiance (and not importance)
-            if mode==TransportMode.RADIANCE.value:
-                brdf *= (n1/n2)**2
-            pdf = 1-fr
-            intr_type = Medium.REFRACTION.value
+        # refraction
+        intr_type = Medium.REFRACTION.value
+        Tr = 1.0 - Re
+        p_Tr = 1.0 - p_Re
+        brdf = (Tr / p_Tr)
+        return transmitted_direction, Tr, brdf, intr_type
 
-    return outgoing_direction, pdf, brdf, intr_type
+
+
+# @numba.njit
+# def sample_specular(nearest_object, surface_normal, ray, mode=TransportMode.RADIANCE.value):
+#     # use Fresnel
+#     n1 = 1
+#     n2 = nearest_object.material.ior
+#
+#     # Calculate the reflection and refraction probabilities
+#     cos_theta_i = np.dot(-ray.direction, surface_normal)
+#     if cos_theta_i < 0:
+#         surface_normal = -surface_normal
+#         cos_theta_i = np.dot(-ray.direction, surface_normal)
+#     eta = n1 / n2
+#
+#     fr, sin2_theta_t = fresnel_dielectric(cos_theta_i, n1, n2)
+#
+#     p_Re = 0.25 + 0.5 * fr
+#
+#     # check reflection or refraction
+#     if np.random.random() < p_Re:
+#         # reflection
+#         outgoing_direction = ray.direction - 2 * np.dot(ray.direction, surface_normal) * surface_normal
+#         brdf = fr/p_Re
+#         pdf = fr
+#         intr_type = Medium.REFLECTION.value
+#     else:
+#         if sin2_theta_t > 1:
+#             # total internal reflection
+#             outgoing_direction = ray.direction - 2 * np.dot(ray.direction, surface_normal) * surface_normal
+#             brdf = 1
+#             pdf = 1
+#             intr_type = Medium.TIR.value
+#         else:
+#             # refraction
+#             outgoing_direction = eta * ray.direction + (eta * cos_theta_i - np.sqrt(1 - sin2_theta_t)) * surface_normal
+#             brdf = (1-fr)/(1-p_Re)
+#             # Account for non-symmetry with transmission to different medium
+#             # iff mode is radiance (and not importance)
+#             if mode==TransportMode.RADIANCE.value:
+#                 brdf *= (n1/n2)**2
+#             pdf = 1-fr
+#             intr_type = Medium.REFRACTION.value
+#
+#     return outgoing_direction, pdf, brdf, intr_type
 
 
 @numba.njit

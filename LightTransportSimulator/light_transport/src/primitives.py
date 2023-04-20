@@ -1,5 +1,8 @@
+import typing
+
 from .constants import EPSILON
 from .material import Material
+from .rays import Ray
 from .vectors import normalize
 import numpy as np
 import numba
@@ -12,11 +15,32 @@ class ShapeOptions(enum.Enum):
     SPHERE = 3
     AABB = 4
     TRIANGLEPC = 5
+    SHAPE = 0
+
+
+
+# @numba.experimental.jitclass([
+#     ('type', numba.intp)
+# ])
+class Primitive:
+    # @numba.void(numba.int_)
+    def __init__(self, type):
+        self.type = type
+
+    # @numba.boolean(Ray.class_type.instance_type)
+    def intersect(self, ray):
+        return False
+
+    # @numba.float64()
+    def get_area(self):
+        return 1.0
+
+    def get_normal(self, intersection):
+        return np.array([0.0, 1.0, 0.0], np.float64)
 
 
 @numba.experimental.jitclass([
     ('type', numba.intp),
-    ('id', numba.intp),
     ('vertex_1', numba.float64[:]),
     ('vertex_2', numba.float64[:]),
     ('vertex_3', numba.float64[:]),
@@ -25,10 +49,11 @@ class ShapeOptions(enum.Enum):
     ('is_light', numba.boolean),
     ('normal', numba.float64[:])
 ])
-class Triangle:
-    def __init__(self, id, vertex_1, vertex_2, vertex_3, material, is_light=False):
-        self.type = ShapeOptions.TRIANGLE.value
-        self.id = id
+class Triangle(Primitive):
+    __init__parent = Primitive.__init__
+    def __init__(self, vertex_1, vertex_2, vertex_3, material, is_light=False):
+        # super().__init__(ShapeOptions.TRIANGLE.value)
+        self.__init__parent(ShapeOptions.TRIANGLE.value)
         self.vertex_1 = vertex_1
         self.vertex_2 = vertex_2
         self.vertex_3 = vertex_3
@@ -37,19 +62,106 @@ class Triangle:
         self.is_light = is_light
         self.normal = normalize(np.cross(vertex_2-vertex_1, vertex_3-vertex_1))
 
+    def intersect(self, ray):
+
+        vertex_a = self.vertex_1
+        vertex_b = self.vertex_2
+        vertex_c = self.vertex_3
+
+        plane_normal = self.normal
+
+        ab = vertex_b - vertex_a
+        ac = vertex_c - vertex_a
+
+        # ray_direction = normalize(ray_end - ray_origin)
+
+        ray_dot_plane = np.dot(ray.direction, plane_normal)
+
+        if abs(ray_dot_plane)<=EPSILON:
+            return False
+
+        pvec = np.cross(ray.direction, ac)
+
+        det = np.dot(ab, pvec)
+
+        if -EPSILON < det < EPSILON:
+            return False
+
+        inv_det = 1.0 / det
+
+        tvec = ray.origin - vertex_a
+
+        u = np.dot(tvec, pvec) * inv_det
+
+        if u < 0 or u > 1:
+            return False
+
+        qvec = np.cross(tvec, ab)
+
+        v = np.dot(ray.direction, qvec) * inv_det
+
+        if v < 0 or u+v > 1:
+            return False
+
+        t = np.dot(ac, qvec) * inv_det
+
+        if ray.tmin < t < ray.tmax:
+            ray.tmax = t
+            return True
+        else:
+            return False
+
+    def get_area(self):
+        return 0.5 * normalize(np.cross(self.vertex_2-self.vertex_1, self.vertex_3-self.vertex_1))
+
+    def get_normal(self, intersection):
+        return self.normal
+
+
 
 @numba.experimental.jitclass([
     ('type', numba.intp),
     ('center', numba.float64[:]),
-    ('radius', numba.float64[:]),
+    ('radius', numba.float64),
     ('material', Material.class_type.instance_type)
 ])
-class Sphere:
+class Sphere(Primitive):
+    __init__parent = Primitive.__init__
     def __init__(self, center, radius, material):
-        self.type = ShapeOptions.SPHERE.value
+        # super().__init__(ShapeOptions.SPHERE.value)
+        self.__init__parent(ShapeOptions.SPHERE.value)
         self.center = center
         self.radius = radius
         self.material = material
+
+    def intersect(self, ray):
+        op = self.center - ray.origin
+        eps = 1e-4
+        b = np.dot(ray.direction, op)
+        det = b*b - np.dot(op, op) + self.radius*self.radius
+
+        if det < 0:
+            return False
+
+        sqrt_det = np.sqrt(det)
+
+        tmin = b - sqrt_det
+        if ray.tmin < tmin < ray.tmax:
+            ray.tmax = tmin
+            return True
+
+        tmax = b + sqrt_det
+        if ray.tmin < tmax < ray.tmax:
+            ray.tmax = tmax
+            return True
+
+        return False
+
+    def get_area(self):
+        return 4 * np.pi * self.radius ** 2
+
+    def get_normal(self, intersection):
+        return normalize(intersection-self.center)
 
 
 @numba.experimental.jitclass([
@@ -209,3 +321,22 @@ class PreComputedTriangle:
         return None
 
 
+# sphere_type = numba.deferred_type()
+# triangle_type = numba.deferred_type()
+
+spec = [
+    ('nearest_sphere', numba.optional(Sphere.class_type.instance_type)),
+    ('nearest_triangle', numba.optional(Triangle.class_type.instance_type)),
+    ('min_distance', numba.optional(numba.float64)),
+    ('intersected_point', numba.optional(numba.float64[:])),
+    ('normal', numba.float64[:])
+]
+
+@numba.experimental.jitclass(spec)
+class Intersection:
+    def __init__(self, nearest_triangle, nearest_sphere, min_distance, intersected_point, normal):
+        self.nearest_triangle = nearest_triangle
+        self.nearest_sphere = nearest_sphere
+        self.min_distance = min_distance
+        self.intersected_point = intersected_point
+        self.normal = normal

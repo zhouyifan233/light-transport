@@ -2,6 +2,7 @@ import math
 
 import numba
 import numpy as np
+import logging
 
 from LightTransportSimulator.light_transport.src.bdpt_utils import get_pdf, get_light_origin_pdf, \
     get_light_pdf, get_camera_pdf, get_bsdf_pdf, sample_to_add_light
@@ -147,16 +148,10 @@ def generate_light_subpaths(scene, bvh, primitives, max_depth, rand_idx):
 def setup_camera(scene, left_right, top_bottom):
     # computes the area of the visible screen and the camera normal
     if scene.camera.screen_area is None:
-        scene.camera.screen_area = (left_right[-1]-left_right[0])*(top_bottom[-1]-top_bottom[0])
-
-    cam = scene.camera.position[:3]
+        scene.camera.screen_area = np.abs((left_right[-1]-left_right[0])*(top_bottom[-1]-top_bottom[0]))
 
     if scene.camera.normal is None:
-        camera_plane_point_1 = camera_plane_point_2 = cam
-        camera_plane_point_1[1] = camera_plane_point_1[1]+1
-        camera_plane_point_2[1] = camera_plane_point_2[1]-1
-        _normal = normalize(np.cross(camera_plane_point_1-cam, camera_plane_point_2-cam))
-        scene.camera.normal = np.append(_normal, 0)
+        scene.camera.normal = normalize(np.array([0,0,scene.f_distance, 1])-scene.camera.position)
 
     return scene
 
@@ -217,6 +212,66 @@ def generate_camera_subpaths(scene, bvh, primitives, origin, end, max_depth, ran
 
 
 
+# @numba.njit
+# def get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t):
+#     if s+t == 2:
+#         return 1
+#
+#     sum_ri = 0
+#
+#     re_map = lambda f: f if f != 0 else 1 # to avoid divide by 0
+#
+#     # Temporarily update vertex properties for current strategy
+#     # Look up connection vertices and their predecessors
+#     qs = light_vertices[s - 1] if s > 0 else None
+#     pt = camera_vertices[t - 1] if t > 0 else None
+#     qs_minus = light_vertices[s - 2] if s > 1 else None
+#     pt_minus = camera_vertices[t - 2] if t > 1 else None
+#
+#     # Update sampled vertex for s=1 or t=1 strategy
+#     if s == 1:
+#         qs = sampled
+#     elif t == 1:
+#         pt = sampled
+#
+#     # Update reverse density of vertex pt_{t-1}
+#     if pt is not None and pt.medium!=Medium.NONE.value:
+#         if s>0:
+#             pt.pdf_rev = get_pdf(scene, qs_minus, qs, pt)
+#         else:
+#             pt.pdf_rev = get_light_origin_pdf(scene, pt, pt_minus)
+#
+#     # Update reverse density of vertex pt_{t-2}
+#     if pt_minus is not None and pt_minus.medium!=Medium.NONE.value:
+#         if s>0:
+#             pt_minus.pdf_rev = get_pdf(scene, qs, pt, pt_minus)
+#         else:
+#             pt_minus.pdf_rev = get_light_pdf(pt, pt_minus)
+#
+#     # Update reverse density of vertices qs_{s-1} and qs_{s-2}
+#     if qs is not None and qs.medium!=Medium.NONE.value:
+#         qs.pdf_rev = get_pdf(scene, pt_minus, pt, qs)
+#
+#     if qs_minus is not None and qs_minus.medium!=Medium.NONE.value:
+#         qs_minus.pdf_rev = get_pdf(scene, pt, qs, qs_minus)
+#
+#     # Consider hypothetical connection strategies along the camera subpath
+#     ri = 1
+#     for i in range(t - 1, 0, -1):
+#         ri *= re_map(camera_vertices[i].pdf_rev) / re_map(camera_vertices[i].pdf_fwd)
+#         if not camera_vertices[i].is_delta:
+#             sum_ri += ri
+#
+#     # Consider hypothetical connection strategies along the light subpath
+#     ri = 1
+#     for i in range(s - 1, -1, -1):
+#         ri *= re_map(light_vertices[i].pdf_rev) / re_map(light_vertices[i].pdf_fwd)
+#         if not light_vertices[i].is_delta:
+#             sum_ri += ri
+#
+#     return 1/(1+sum_ri)
+
+
 @numba.njit
 def get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t):
     if s+t == 2:
@@ -228,6 +283,9 @@ def get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t):
 
     # Temporarily update vertex properties for current strategy
     # Look up connection vertices and their predecessors
+
+
+
     qs = light_vertices[s - 1] if s > 0 else None
     pt = camera_vertices[t - 1] if t > 0 else None
     qs_minus = light_vertices[s - 2] if s > 1 else None
@@ -238,6 +296,11 @@ def get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t):
         qs = sampled
     elif t == 1:
         pt = sampled
+
+    if pt is not None and pt.medium!=Medium.NONE.value:
+        pt.is_delta = False
+    if qs is not None and qs.medium!=Medium.NONE.value:
+        qs.is_delta = False
 
     # Update reverse density of vertex pt_{t-1}
     if pt is not None and pt.medium!=Medium.NONE.value:
@@ -274,13 +337,16 @@ def get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t):
         if not light_vertices[i].is_delta:
             sum_ri += ri
 
-    return 1/(1+sum_ri)
+    weight = 1/(1+sum_ri)
+
+    # print('MIS_weight= ', weight)
+
+    return weight
+
 
 
 @numba.njit
 def get_light(scene, curr_v, next_v):
-    if next_v.medium != Medium.LIGHT.value:
-        return ZEROS
 
     w = normalize(next_v.point - curr_v.point)
 
@@ -329,7 +395,7 @@ def G(vertex_0, vertex_1, primitives, bvh):
 
 @numba.njit
 def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t):
-    light = np.zeros((3), dtype=np.float64)
+    light = ZEROS
     sampled = None
 
     # check for invalid connections
@@ -340,7 +406,7 @@ def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t)
     if s==0:
         # consider camera subpath as the entire path
         if camera_vertices[t-1].medium == Medium.LIGHT.value:
-            light += get_light(scene, camera_vertices[t-1], camera_vertices[t-2]) * (camera_vertices[t-1].throughput * get_vertex_color(camera_vertices[t-1]))
+            light = get_light(scene, camera_vertices[t-1], camera_vertices[t-2]) * (camera_vertices[t-1].throughput * get_vertex_color(camera_vertices[t-1]))
 
 
     elif t==1:
@@ -365,13 +431,14 @@ def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t)
                 pdf_pos = 1
 
                 throughput = 1 / (scene.camera.screen_area * 1 * cos2_theta * cos2_theta)
-                # throughput = np.array([throughput])
+
                 if pdf_dir>0:
                     sampled = create_camera_vertex(cam.point, new_path_direction, scene.camera.normal, new_path_magnitude, pdf_pos, pdf_dir, throughput/pdf_dir)
-                    L = (qs.throughput * get_vertex_color(qs)) * bxdf(qs, sampled) * sampled.throughput
+
+                    light = (qs.throughput * get_vertex_color(qs)) * bxdf(qs, sampled) * sampled.throughput
+
                     if is_on_surface(qs):
-                        L *= np.abs(np.dot(new_path_direction, qs.g_norm))
-                    light+=L
+                        light *= np.abs(np.dot(new_path_direction, qs.g_norm))
 
 
     elif s==1:
@@ -384,8 +451,8 @@ def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t)
             sampled_light = scene.lights[random_light_index]
 
             # check if the light is visible from the current vertex
-            new_path_direction = normalize(sampled_light.source - pt.point)
-            new_path = Ray(pt.point, new_path_direction)
+            new_path_direction = -normalize(sampled_light.source - pt.point)
+            new_path = Ray(pt.point, new_path_direction) # n.b. -ve direction
             new_path_magnitude = np.linalg.norm(sampled_light.source - pt.point)
 
             _, min_distance = intersect_bvh(new_path, primitives, bvh)
@@ -415,12 +482,10 @@ def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t)
                     sampled.pdf_fwd = get_light_origin_pdf(scene, sampled, pt)
                     sampled.color = sampled_light.material.color.diffuse
 
-                    L = (pt.throughput * get_vertex_color(pt)) * bxdf(pt, sampled) * (sampled.throughput * sampled.color)
+                    light = (pt.throughput * get_vertex_color(pt)) * bxdf(pt, sampled) * (sampled.throughput * sampled.color)
 
                     if is_on_surface(pt):
-                        L *= np.abs(np.dot(new_path_direction, pt.g_norm))
-
-                    light += L
+                        light *= np.abs(np.dot(new_path_direction, pt.g_norm))
 
 
     else:
@@ -429,21 +494,21 @@ def connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t)
         pt = camera_vertices[t-1]
 
         if is_connectible(qs) and is_connectible(pt):
-            L = (qs.throughput*get_vertex_color(qs)) * bxdf(qs, pt) * bxdf(pt, qs) * (pt.throughput*get_vertex_color(pt))
-            if not np.array_equal(L, ZEROS):
-                L *= G(qs, pt, primitives, bvh)
 
-            light += L
+            light = (qs.throughput*get_vertex_color(qs)) * bxdf(qs, pt) * bxdf(pt, qs) * (pt.throughput*get_vertex_color(pt))
+            if not np.array_equal(light, ZEROS):
+                light *= G(qs, pt, primitives, bvh)
 
 
     # compute MIS-weights for the above connection strategies
     if np.array_equal(light, ZEROS):
         mis_weight = 0.0
     else:
-        mis_weight = 1 #get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t)
+        mis_weight = get_mis_weight(scene, light_vertices, camera_vertices, sampled, s, t)
 
-    light *= mis_weight
+    # print('mis_weight: ', mis_weight, ', light: ', light)
 
+    light = light * mis_weight
 
     return light
 
@@ -487,9 +552,11 @@ def render_scene(scene, primitives, bvh):
                             continue
 
                         color += connect_paths(scene, bvh, primitives, camera_vertices, light_vertices, s, t)
+                        # print('color: ', color)
 
             color = color/scene.number_of_samples
+            # print('color: ', color)
             scene.image[i, j] = np.clip(color, 0, 1)
-
-        print(i)
+        pix_count += 1
+        print('Progress:-', (pix_count/scene.height)*100)
     return scene.image

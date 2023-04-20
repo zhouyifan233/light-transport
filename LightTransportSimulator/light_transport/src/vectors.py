@@ -4,7 +4,10 @@ import numba
 
 @numba.njit
 def normalize(vector):
-    return vector / np.linalg.norm(vector)
+    norm = np.linalg.norm(vector)
+    if norm==0:
+        return vector
+    return vector/norm
 
 
 def unit_vector(vector):

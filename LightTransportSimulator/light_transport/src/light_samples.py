@@ -9,7 +9,8 @@ from LightTransportSimulator.light_transport.src.constants import inv_pi, EPSILO
 from LightTransportSimulator.light_transport.src.rays import Ray
 from LightTransportSimulator.light_transport.src.scene import Light
 from LightTransportSimulator.light_transport.src.utils import nearest_intersected_object, uniform_hemisphere_sampling, \
-    cosine_weighted_hemisphere_sampling, create_orthonormal_system, sample_cosine_hemisphere, get_cosine_hemisphere_pdf
+    cosine_weighted_hemisphere_sampling, create_orthonormal_system, sample_cosine_hemisphere, get_cosine_hemisphere_pdf, \
+    hit_object
 from LightTransportSimulator.light_transport.src.vectors import normalize
 from LightTransportSimulator.light_transport.src.vertex import Vertex, create_light_vertex
 
@@ -26,37 +27,42 @@ def generate_area_light_samples(tri_1, tri_2, source_mat, number_of_samples, tot
         l1 = Light(source=tp1, material=source_mat, normal=tri_1.normal, total_area=total_area)
         light_sources.append(l1)
         tp2 = tri_2.vertex_1 * (1-math.sqrt(a[x])) + tri_2.vertex_2 * (math.sqrt(a[x])*(1-b[x])) + tri_2.vertex_3 * (b[x]*math.sqrt(a[x]))
-        l2 = Light(source=tp1, material=source_mat, normal=tri_2.normal, total_area=total_area)
+        l2 = Light(source=tp2, material=source_mat, normal=tri_2.normal, total_area=total_area)
         light_sources.append(l2)
 
     return light_sources
 
 
+
+
 @numba.njit
-def cast_one_shadow_ray(scene, primitives, bvh, intersected_object, intersection_point, intersection_normal):
+def cast_one_shadow_ray(scene, spheres, triangles, bvh, intersected_object_material, intersection_point, intersection_normal):
     light_contrib = np.zeros((3), dtype=np.float64)
     random_light_index = np.random.choice(len(scene.lights), 1)[0]
     light = scene.lights[random_light_index]
 
     shadow_ray_direction = normalize(light.source - intersection_point)
     shadow_ray_magnitude = np.linalg.norm(light.source - intersection_point)
-    shadow_ray = Ray(intersection_point, shadow_ray_direction)
+    shadow_ray = Ray(intersection_point, shadow_ray_direction, EPSILON)
 
-    # _objects = traverse_bvh(bvh, shadow_ray)
-    # _objects = intersect_bvh(shadow_ray, primitives, bvh)
-    # _, min_distance = nearest_intersected_object(_objects, intersection_point, shadow_ray_direction, t1=shadow_ray_magnitude)
-    _, min_distance = intersect_bvh(shadow_ray, primitives, bvh)
+    isect = hit_object(spheres, triangles, bvh, shadow_ray)
+    min_distance = isect.min_distance
 
     if min_distance is None:
         return light_contrib # black background- unlikely
 
-    visible = min_distance >= shadow_ray_magnitude-EPSILON
+    nearest_triangle = isect.nearest_triangle
+    nearest_sphere = isect.nearest_sphere
+
+    # visible = min_distance >= shadow_ray_magnitude-EPSILON
+    visible = nearest_triangle is None and nearest_sphere.material.emission>0
     if visible:
-        brdf = (light.material.emission * light.material.color.diffuse) * (intersected_object.material.color.diffuse * inv_pi)
+        brdf = (light.material.emission * light.material.color.diffuse) * (intersected_object_material.color.diffuse * inv_pi)
         cos_theta = np.dot(intersection_normal, shadow_ray_direction)
         cos_phi = np.dot(light.normal, -shadow_ray_direction)
         geometry_term = np.abs(cos_theta * cos_phi)/(shadow_ray_magnitude * shadow_ray_magnitude)
         light_contrib += brdf * geometry_term * light.total_area
+        # print('from light: ', light.material.color.diffuse, intersected_object_material.color.diffuse, light.material.emission)
 
     return light_contrib
 

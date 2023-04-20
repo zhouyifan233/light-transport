@@ -2,8 +2,9 @@ import numba
 import numpy as np
 
 from .constants import EPSILON
-from .intersects import aabb_intersect, triangle_intersect, intersect_bounds, pc_triangle_intersect
-from .primitives import AABB, Triangle, PreComputedTriangle
+from .intersects import aabb_intersect, triangle_intersect, intersect_bounds, pc_triangle_intersect, sphere_intersect
+from .primitives import AABB, Triangle, PreComputedTriangle, ShapeOptions
+from .rays import Ray
 from .stl4py import nth_element, partition
 
 
@@ -74,8 +75,13 @@ class BucketInfo:
 
 
 def get_bounds(prim):
-    min_p = np.minimum.reduce([prim.vertex_1, prim.vertex_2, prim.vertex_3])
-    max_p = np.maximum.reduce([prim.vertex_1, prim.vertex_2, prim.vertex_3])
+    if prim.type==ShapeOptions.TRIANGLE.value:
+        min_p = np.minimum.reduce([prim.vertex_1, prim.vertex_2, prim.vertex_3])
+        max_p = np.maximum.reduce([prim.vertex_1, prim.vertex_2, prim.vertex_3])
+    else:
+        min_p = prim.center - prim.radius
+        max_p = prim.center + prim.radius
+
     bounded_box = AABB(min_p, max_p)
 
     return bounded_box
@@ -154,6 +160,7 @@ def build_bvh(primitives, bounded_boxes, start, end, ordered_prims, total_nodes)
     total_nodes += 1
     bounds = None
     for i in range(start, end):
+        # print(bounded_boxes[i].bounds.centroid)
         bounds = enclose_volumes(bounds, bounded_boxes[i].bounds)
 
     # print(start, end)
@@ -412,12 +419,16 @@ def __intersect_bvh(ray, primitives, linear_bvh):
 
 @numba.njit
 def intersect_bvh(ray, primitives, linear_bvh):
+    # if primitives[0].type == ShapeOptions.SPHERE.value:
+    #     intersect_f = sphere_intersect
+    # else:
+    #     intersect_f = triangle_intersect
     current_idx = 0
     triangle = None
     visited = [False for _ in range(len(linear_bvh))]
     inv_dir = 1/ray.direction
     dir_is_neg = [inv_dir[0] < 0, inv_dir[1] < 0, inv_dir[2] < 0]
-    min_distance = ray.tmax
+    # min_distance = np.inf #ray.tmax
 
     while True:
         # print(current_idx, visited)
@@ -434,9 +445,10 @@ def intersect_bvh(ray, primitives, linear_bvh):
                         # if leaf_idx>=len(primitives):
                         #     print("Something went wrong!?!:-"+str(node.primitives_offset))
                         visited[leaf_idx] = True
-                        t = triangle_intersect(ray.origin, ray.direction, primitives[leaf_idx])
-                        if t is not None and EPSILON<t<min_distance:
-                            min_distance = t
+                        # t = intersect_f(ray.origin, ray.direction, primitives[leaf_idx])
+                        # t = triangle_intersect(ray.origin, ray.direction, primitives[leaf_idx])
+                        if primitives[leaf_idx].intersect(ray): #and ray.tmin<ray.tmax<min_distance:
+                            # min_distance = ray.tmax
                             # triangles.append(primitives[leaf_idx])
                             triangle = primitives[leaf_idx]
                     if current_idx==0:
@@ -479,4 +491,4 @@ def intersect_bvh(ray, primitives, linear_bvh):
                 break
 
     # print("No of triangles:-"+str(len(triangles)))
-    return triangle, min_distance
+    return triangle #, min_distance

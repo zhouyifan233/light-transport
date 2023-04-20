@@ -18,25 +18,19 @@ class Color:
 @numba.experimental.jitclass([
     ('color', Color.class_type.instance_type),
     ('shininess', numba.float64),
-    ('reflectance', numba.float64),
     ('ior', numba.float64),
-    ('is_diffuse', numba.boolean),
-    ('is_mirror', numba.boolean),
+    ('type', numba.intp),
     ('emission', numba.float64),
-    ('transmittance', numba.float64),
     ('roughness', numba.float64),
     ('albedo', numba.float64)
 ])
 class Material:
-    def __init__(self, color, shininess, reflectance, ior, emission=0.0, transmittance=0.0, is_diffuse=True, is_mirror=False):
+    def __init__(self, color, shininess, ior, type, emission=0.0):
         self.color = color
         self.shininess = shininess
-        self.reflectance = reflectance
-        self.is_diffuse = is_diffuse
-        self.is_mirror = is_mirror
         self.ior = ior
+        self.type = type
         self.emission = emission
-        self.transmittance = transmittance
         self.roughness = 0.0
         self.albedo = 1.0
 

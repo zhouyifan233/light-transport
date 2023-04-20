@@ -8,38 +8,62 @@ from .vectors import normalize
 from typing import Optional
 
 
-@numba.njit(numba.optional(numba.float64[:])(numba.float64[:], numba.float64[:], Sphere.class_type.instance_type))
+# @numba.njit
+# def sphere_intersect(ray_origin, ray_direction, sphere):
+#     """
+#     returns the distance from the origin of the ray to the nearest intersection point
+#     if the ray actually intersects the sphere, otherwise None.
+#     :param center: center of the sphere
+#     :param radius: radius of the sphere
+#     :param ray_origin: center of the camera
+#     :param ray_end: pixel on the sphere
+#     :return: distance from origin to the intersection point, or None
+#     """
+#     center = sphere.center
+#     radius = sphere.radius
+#
+#     # ray_direction = normalize(ray_end - ray_origin)
+#     b = 2 * np.dot(ray_direction, ray_origin - center)
+#     c = np.linalg.norm(ray_origin - center) ** 2 - radius ** 2
+#     delta = b ** 2 - 4 * c # discriminant
+#
+#     if delta > 0:
+#         # ray goes through the sphere
+#         t1 = (-b + np.sqrt(delta)) / 2
+#         t2 = (-b - np.sqrt(delta)) / 2
+#         if t1 > 0 and t2 > 0:
+#             # return the first point of intersection
+#             # return min(t1, t2)
+#             if t1>t2:
+#                 return t2
+#             else:
+#                 return t1
+#
+#     return None
+
+
+
+@numba.njit
 def sphere_intersect(ray_origin, ray_direction, sphere):
-    """
-    returns the distance from the origin of the ray to the nearest intersection point
-    if the ray actually intersects the sphere, otherwise None.
-    :param center: center of the sphere
-    :param radius: radius of the sphere
-    :param ray_origin: center of the camera
-    :param ray_end: pixel on the sphere
-    :return: distance from origin to the intersection point, or None
-    """
-    center = sphere.center
-    radius = sphere.radius
 
-    # ray_direction = normalize(ray_end - ray_origin)
-    b = 2 * np.dot(ray_direction, ray_origin - center)
-    c = np.linalg.norm(ray_origin - center) ** 2 - radius ** 2
-    delta = b ** 2 - 4 * c # discriminant
+    op = sphere.center - ray_origin
+    eps = 1e-4
+    b = np.dot(ray_direction, op)
+    det = b*b - np.dot(op, op) + sphere.radius*sphere.radius
+    if det<0:
+        return None
 
-    if delta > 0:
-        # ray goes through the sphere
-        t1 = (-b + np.sqrt(delta)) / 2
-        t2 = (-b - np.sqrt(delta)) / 2
-        if t1 > 0 and t2 > 0:
-            # return the first point of intersection
-            # return min(t1, t2)
-            if t1>t2:
-                return t2
-            else:
-                return t1
+    det = np.sqrt(det)
+    t1 = b-det
+    t2 = b+det
 
-    return None
+    if t1>eps:
+        return t1
+    else:
+        if t2>eps:
+            return t2
+        else:
+            return None
 
 
 @numba.njit

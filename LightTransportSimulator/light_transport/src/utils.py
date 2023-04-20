@@ -1,13 +1,16 @@
 import math
+from typing import Union, Tuple
 
 import numpy as np
 import numba
+from numba.misc.special import literal_unroll
 
 from .bvh import traverse_bvh
 from .bvh_new import intersect_bvh
 from .constants import inv_2_pi, pi_over_4, pi_over_2, inv_pi
 from .intersects import sphere_intersect, triangle_intersect, plane_intersect, __triangle_intersect, pc_triangle_intersect
-from .primitives import Triangle, Sphere, Plane, ShapeOptions
+from .primitives import Triangle, Sphere, Plane, ShapeOptions, Primitive, Intersection
+from .vectors import normalize
 
 
 @numba.njit
@@ -48,24 +51,45 @@ def nearest_intersected_object(objects, ray_origin, ray_direction, t0=0.0, t1=np
     return nearest_object, min_distance
 
 
+@numba.njit
+def intersect_spheres(ray, primitives):
+    isec = None
+    for i in range(len(primitives)): #numba.literal_unroll(range(len(primitives)))
+        if primitives[i].intersect(ray):
+            isec = primitives[i]
+    return isec
+
 
 @numba.njit
-def hit_object(primitives, bvh, ray):
-    # get hittable objects
-    # objects = traverse_bvh(bvh, ray)
-    # objects = intersect_bvh(ray, primitives, bvh)
-    # check for intersections
-    # nearest_object, min_distance = nearest_intersected_object(objects, ray.origin, ray.direction)
-    nearest_object, min_distance = intersect_bvh(ray, primitives, bvh)
+def hit_object(spheres, triangles, bvh, ray):
 
-    if nearest_object is None:
-        # no object was hit
-        return None, None, None, None
+    nearest_triangle = None
+    nearest_sphere = None
 
-    intersected_point = ray.origin + min_distance * ray.direction
-    normal = nearest_object.normal
+    if len(spheres)>0:
+        nearest_sphere = intersect_spheres(ray, spheres)
+        if nearest_sphere is None:
+            # no object was hit
+            min_distance = None
+            intersected_point = None
+            normal = np.array([np.inf, np.inf, np.inf], dtype=np.float64)
+        else:
+            min_distance = ray.tmax
+            intersected_point = ray.origin + min_distance * ray.direction
+            normal = nearest_sphere.get_normal(intersected_point)
 
-    return nearest_object, min_distance, intersected_point, normal
+    if triangles is not None and len(triangles)>0:
+        nearest_triangle = intersect_bvh(ray, triangles, bvh)
+
+        if nearest_triangle is not None:
+            nearest_sphere = None
+            min_distance = ray.tmax
+            intersected_point = ray.origin + min_distance * ray.direction
+            normal = nearest_triangle.get_normal(intersected_point)
+
+    isect = Intersection(nearest_triangle, nearest_sphere, min_distance, intersected_point, normal)
+
+    return isect
 
 
 @numba.njit
@@ -75,7 +99,7 @@ def create_orthonormal_system(normal):
     else:
         v2 = np.array([0.0, normal[2], -normal[1]], dtype=np.float64) / np.sqrt(np.array([normal[1] * normal[1] + normal[2] * normal[2]], dtype=np.float64))
 
-    v3 = np.cross(normal[:-1], v2)
+    v3 = np.cross(normal, v2)
 
     return v2, v3
 
@@ -103,8 +127,8 @@ def uniform_hemisphere_sampling(normal_at_intersection):
 
     global_ray_dir = np.array([random_point[0] * v2[0] + random_point[1] * v3[0] + random_point[2] * normal_at_intersection[0],
                                random_point[0] * v2[1] + random_point[1] * v3[1] + random_point[2] * normal_at_intersection[1],
-                               random_point[0] * v2[2] + random_point[1] * v3[2] + random_point[2] * normal_at_intersection[2],
-                               0], dtype=np.float64)
+                               random_point[0] * v2[2] + random_point[1] * v3[2] + random_point[2] * normal_at_intersection[2]
+                               ], dtype=np.float64)
 
     pdf = inv_2_pi
 
@@ -141,11 +165,12 @@ def get_cosine_hemisphere_pdf(cos_theta):
 
 
 @numba.njit
-def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction, rand):
+def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction):
     incoming_direction = -incoming_direction
     # random uniform samples
     # r1 = np.random.rand()
-    u = np.array(rand, dtype=np.float64)
+    # u = np.array(rand, dtype=np.float64)
+    u = np.array([np.random.random(), np.random.random()], dtype=np.float64)
     outgoing_direction = sample_cosine_hemisphere(u)
 
     v2, v3 = create_orthonormal_system(normal_at_intersection)
@@ -162,8 +187,8 @@ def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_directi
 
     outgoing_direction = np.array([outgoing_direction[0] * v2[0] + outgoing_direction[1] * v3[0] + outgoing_direction[2] * normal_at_intersection[0],
                                    outgoing_direction[0] * v2[1] + outgoing_direction[1] * v3[1] + outgoing_direction[2] * normal_at_intersection[1],
-                                   outgoing_direction[0] * v2[2] + outgoing_direction[1] * v3[2] + outgoing_direction[2] * normal_at_intersection[2],
-                                   0], dtype=np.float64)
+                                   outgoing_direction[0] * v2[2] + outgoing_direction[1] * v3[2] + outgoing_direction[2] * normal_at_intersection[2]
+                                   ], dtype=np.float64)
 
     # pdf = abs(z)*inv_pi
 
@@ -198,7 +223,7 @@ def _cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direct
 
     outgoing_direction = np.array([outgoing_direction[0] * v2[0] + outgoing_direction[1] * v3[0] + outgoing_direction[2] * normal_at_intersection[0],
                                    outgoing_direction[0] * v2[1] + outgoing_direction[1] * v3[1] + outgoing_direction[2] * normal_at_intersection[1],
-                                   outgoing_direction[0] * v2[2] + outgoing_direction[1] * v3[2] + outgoing_direction[2] * normal_at_intersection[2],
-                                   0], dtype=np.float64)
+                                   outgoing_direction[0] * v2[2] + outgoing_direction[1] * v3[2] + outgoing_direction[2] * normal_at_intersection[2]
+                                   ], dtype=np.float64)
 
     return outgoing_direction, pdf
