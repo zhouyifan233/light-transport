@@ -105,11 +105,12 @@ class Triangle(Primitive):
 
         t = np.dot(ac, qvec) * inv_det
 
-        if ray.tmin < t < ray.tmax:
-            ray.tmax = t
-            return True
-        else:
+        if t < ray.tmin or t > ray.tmax:
             return False
+
+        ray.tmax = t
+
+        return True
 
     def get_area(self):
         return 0.5 * normalize(np.cross(self.vertex_2-self.vertex_1, self.vertex_3-self.vertex_1))

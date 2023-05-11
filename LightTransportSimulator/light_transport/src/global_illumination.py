@@ -4,7 +4,6 @@ import numba
 import numpy as np
 
 from .brdf import *
-from .bvh import traverse_bvh
 from .constants import inv_pi, EPSILON, MatType, ONES
 from .control_variates import calculate_dlogpdu, estimate_alpha
 from .light_samples import cast_one_shadow_ray
@@ -61,44 +60,37 @@ def trace_path(scene, spheres, triangles, bvh, ray, bounce):
 
         if nearest_object_material.type==MatType.DIFFUSE.value:
             # diffuse surface
-            # print('surface normal: ', surface_normal)
-            nl = surface_normal
-            # flip normal if facing opposite direction
-            if np.dot(surface_normal, ray.direction) > 0:
-                nl = -surface_normal
-
             # Next Event Estimation - Direct Light
-            direct_light = throughput * cast_one_shadow_ray(scene, spheres, triangles, bvh, nearest_object_material, intersection, nl)
+            direct_light = throughput * cast_one_shadow_ray(scene, spheres, triangles, bvh, nearest_object_material, intersection, surface_normal)
             light = light+direct_light
 
             # Indirect Light
-            new_ray_direction, pdf_fwd, brdf, intr_type = sample_diffuse(nearest_object_material, nl, ray)
+            new_ray_direction, pdf_fwd, brdf, intr_type = sample_diffuse(nearest_object_material, surface_normal, ray)
 
             throughput = throughput * (nearest_object_material.color.diffuse * brdf * np.abs(np.dot(new_ray_direction, surface_normal)) / pdf_fwd)
 
-            intersection = intersection+EPSILON*new_ray_direction
-            ray = Ray(intersection, new_ray_direction, 1e-4)
+            # intersection = intersection+EPSILON*new_ray_direction
+            ray = Ray(intersection, new_ray_direction, EPSILON)
             specular_bounce = False
             continue
 
         elif nearest_object_material.type==MatType.MIRROR.value:
-            # perfect mirror reflection
             new_ray_direction, pdf_fwd, brdf, intr_type = sample_mirror(nearest_object_material, surface_normal, ray)
-            intersection = intersection+EPSILON*new_ray_direction
-            ray = Ray(intersection, new_ray_direction, 1e-4)
+            # intersection = intersection+EPSILON*new_ray_direction
+            ray = Ray(intersection, new_ray_direction, EPSILON)
             specular_bounce = True
             continue
 
         elif nearest_object_material.type==MatType.SPECULAR.value:
             # specular reflection (only dielectric materials)
             new_ray_direction, pdf_fwd, brdf, intr_type = sample_specular(nearest_object_material, surface_normal, ray)
-            throughput = throughput * pdf_fwd # update throughput
-            if intr_type==Medium.REFRACTION.value:
-                intersection = intersection+(-EPSILON)*new_ray_direction
-            else:
-                intersection = intersection+EPSILON*new_ray_direction
-            ray = Ray(intersection, new_ray_direction, 1e-4)
-            specular_bounce = True
+            throughput = throughput * brdf / pdf_fwd # update throughput
+            # if intr_type==Medium.REFRACTION.value:
+            #     intersection = intersection+(-EPSILON)*new_ray_direction
+            # else:
+            #     intersection = intersection+EPSILON*new_ray_direction
+            ray = Ray(intersection, new_ray_direction, EPSILON)
+            specular_bounce = False
             continue
 
         else:
@@ -152,7 +144,7 @@ def render_scene(scene, spheres, triangles, bvh):
 
                         # print('cam: ', cam_origin, cam_direction)
 
-                        cam_ray = Ray(cam_origin, cam_direction, 1e-4)
+                        cam_ray = Ray(cam_origin, cam_direction, 0)
 
                         color = color + trace_path(scene, spheres, triangles, bvh, cam_ray, 0)
 

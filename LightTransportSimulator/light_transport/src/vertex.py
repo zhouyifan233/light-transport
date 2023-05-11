@@ -24,8 +24,8 @@ from .constants import Medium, ONES
     ('is_delta', numba.boolean)
 ])
 class Vertex:
-    def __init__(self, point, ray_direction, g_norm, min_distance):
-        self.point = point
+    def __init__(self, isec, ray):
+        self.isec = isec
         self.g_norm = g_norm
         self.min_distance = min_distance
         self.ray_direction = ray_direction

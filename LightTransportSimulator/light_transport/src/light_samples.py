@@ -3,7 +3,6 @@ import math
 import numba
 import numpy as np
 
-from LightTransportSimulator.light_transport.src.bvh import traverse_bvh
 from LightTransportSimulator.light_transport.src.bvh_new import intersect_bvh
 from LightTransportSimulator.light_transport.src.constants import inv_pi, EPSILON, Medium, ZEROS
 from LightTransportSimulator.light_transport.src.rays import Ray

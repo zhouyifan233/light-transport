@@ -5,7 +5,6 @@ import numpy as np
 import numba
 from numba.misc.special import literal_unroll
 
-from .bvh import traverse_bvh
 from .bvh_new import intersect_bvh
 from .constants import inv_2_pi, pi_over_4, pi_over_2, inv_pi
 from .intersects import sphere_intersect, triangle_intersect, plane_intersect, __triangle_intersect, pc_triangle_intersect
@@ -79,7 +78,8 @@ def hit_object(spheres, triangles, bvh, ray):
             normal = nearest_sphere.get_normal(intersected_point)
 
     if triangles is not None and len(triangles)>0:
-        nearest_triangle = intersect_bvh(ray, triangles, bvh)
+        # nearest_triangle = intersect_bvh(ray, triangles, bvh)
+        nearest_triangle = intersect_spheres(ray, triangles)
 
         if nearest_triangle is not None:
             nearest_sphere = None
@@ -165,32 +165,17 @@ def get_cosine_hemisphere_pdf(cos_theta):
 
 
 @numba.njit
-def cosine_weighted_hemisphere_sampling(normal_at_intersection, incoming_direction):
-    incoming_direction = -incoming_direction
-    # random uniform samples
-    # r1 = np.random.rand()
-    # u = np.array(rand, dtype=np.float64)
-    u = np.array([np.random.random(), np.random.random()], dtype=np.float64)
-    outgoing_direction = sample_cosine_hemisphere(u)
+def cosine_weighted_hemisphere_sampling(surface_normal, incoming_direction):
 
-    v2, v3 = create_orthonormal_system(normal_at_intersection)
+    w = surface_normal if np.dot(surface_normal, incoming_direction) < 0 else -surface_normal
+    u = normalize(np.cross(np.array([0.0, 1.0, 0.0], np.float64) if np.fabs(surface_normal[0]) > 0.1 else np.array([1.0, 0.0, 0.0], np.float64), w))
+    v = np.cross(surface_normal, u)
 
-    # #TODO: Check if reversing z required
-    if incoming_direction[2] < 0:
-        outgoing_direction[2] *= -1
+    rand = np.array([np.random.random(), np.random.random()], dtype=np.float64)
+    outgoing_direction = sample_cosine_hemisphere(rand)
+    outgoing_direction = normalize(outgoing_direction[0] * u + outgoing_direction[1] * v + outgoing_direction[2] * w)
 
-    # pdf = np.dot(global_ray_dir, normal_at_intersection)*inv_pi
-    if incoming_direction[2] * outgoing_direction[2] > 0:
-        pdf = get_cosine_hemisphere_pdf(np.abs(outgoing_direction[2])) # pass the z-axis
-    else:
-        pdf = 0
-
-    outgoing_direction = np.array([outgoing_direction[0] * v2[0] + outgoing_direction[1] * v3[0] + outgoing_direction[2] * normal_at_intersection[0],
-                                   outgoing_direction[0] * v2[1] + outgoing_direction[1] * v3[1] + outgoing_direction[2] * normal_at_intersection[1],
-                                   outgoing_direction[0] * v2[2] + outgoing_direction[1] * v3[2] + outgoing_direction[2] * normal_at_intersection[2]
-                                   ], dtype=np.float64)
-
-    # pdf = abs(z)*inv_pi
+    pdf = get_cosine_hemisphere_pdf(np.abs(outgoing_direction[2]))
 
     return outgoing_direction, pdf
 
