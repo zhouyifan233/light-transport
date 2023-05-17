@@ -22,7 +22,7 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
 
     while True:
         # terminate path if max bounce is reached
-        if bounce>=scene.max_depth:
+        if bounce >= scene.max_depth:
             break
 
         rand_0 = scene.rand_0[int(rand_idx[0]), int(rand_idx[1]), int(rand_idx[2]), bounce]
@@ -42,8 +42,8 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
         # surface_normal = isect.normal
 
         # add emitted light at intersection
-        if nearest_object.is_light and bounce==0:
-            light += nearest_object.material.emission * throughput
+        # if nearest_object.is_light:
+        light += nearest_object.material.emission * throughput
 
         ray_inside_object = False
         if np.dot(surface_normal, ray.direction) > 0:
@@ -56,19 +56,17 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
             # direct light contribution
             direct_light = cast_one_shadow_ray(scene, primitives, bvh, nearest_object, shadow_ray_origin, surface_normal)
 
+            light += throughput * direct_light
+
             # indirect light contribution
             indirect_ray_direction, pdf = cosine_weighted_hemisphere_sampling(surface_normal, ray.direction, [rand_0, rand_1])
 
-            if pdf==0:
+            if pdf == 0:
                 for _b in range(bounce+1, scene.max_depth):
                     scene.rand_0[int(rand_idx[0]), int(rand_idx[1]), int(rand_idx[2]), _b] = np.inf
                 break
 
             indirect_ray_origin = intersection + EPSILON * indirect_ray_direction
-
-            # change ray direction
-            ray.origin = indirect_ray_origin
-            ray.direction = indirect_ray_direction
 
             cos_theta = np.dot(indirect_ray_direction, surface_normal)
 
@@ -76,17 +74,16 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
 
             throughput *= brdf * cos_theta / pdf
 
-            indirect_light = throughput * trace_path(scene, primitives, bvh, ray, bounce+1, rand_idx)
-
-            light += (direct_light+indirect_light)
-
+            # change ray direction
+            ray.origin = indirect_ray_origin
+            ray.direction = indirect_ray_direction
 
         elif nearest_object.material.is_mirror:
             # mirror reflection
             ray.origin = intersection + EPSILON * surface_normal
             ray.direction = get_reflected_direction(ray.direction, surface_normal)
 
-        elif nearest_object.material.transmission>0.0:
+        elif nearest_object.material.transmission > 0.0:
             # compute reflection
             # use Fresnel
             if ray_inside_object:
@@ -126,9 +123,9 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
             break
 
         # terminate path using russian roulette
-        if bounce>3:
+        if bounce > 5:
             r_r = max(0.05, 1-throughput[1]) # russian roulette factor
-            if rand_0<r_r:
+            if rand_0 < r_r:
                 for _b in range(bounce+1, scene.max_depth):
                     scene.rand_0[int(rand_idx[0]), int(rand_idx[1]), int(rand_idx[2]), _b] = np.inf
                 break
