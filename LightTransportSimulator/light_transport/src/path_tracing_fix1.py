@@ -42,8 +42,8 @@ def trace_path(scene, primitives, bvh, ray, bounce, rand_idx):
         # surface_normal = isect.normal
 
         # add emitted light at intersection
-        # if nearest_object.is_light:
-        light += nearest_object.material.emission * throughput
+        if nearest_object.is_light:
+            light += nearest_object.material.emission * throughput
 
         ray_inside_object = False
         if np.dot(surface_normal, ray.direction) > 0:
@@ -162,7 +162,8 @@ def render_scene(scene, primitives, bvh):
                 color += trace_path(scene, primitives, bvh, ray, 0, rand_idx)
                 alpha = estimate_alpha(color)
             color = color/scene.number_of_samples
-            scene.image[i, j] = np.clip(color, 0, 1)
+            # scene.image[i, j] = np.clip(color, 0, 1)
+            scene.image[i, j, :] = scene.image[i, j, :] + 0.25 * np.clip(color, 0, 1)
         pix_count+=1
         print((pix_count/scene.height)*100)
     return scene.image
