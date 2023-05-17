@@ -43,8 +43,13 @@ class Camera:
     ('number_of_samples', numba.uintp),
     ('image', numba.float64[:,:,:]),
     ('rand_0', numba.float64[:,:,:,:]),
-    ('rand_1', numba.float64[:,:,:,:])
+    ('rand_1', numba.float64[:,:,:,:]),
+    ('rand_0_logit', numba.float64[:,:,:,:]),
+    ('rand_1_logit', numba.float64[:,:,:,:]),
+    ('bounce_record', numba.int8[:,:,:,:]),
+    ('record_log_pdf', numba.float64[:,:,:,:])
 ])
+
 class Scene:
     def __init__(self, camera, lights, width=400, height=400, max_depth=3, f_distance=5, number_of_samples=8):
         self.camera = camera
@@ -62,3 +67,7 @@ class Scene:
         self.number_of_samples = number_of_samples
         self.rand_0 = np.random.rand(height, width, number_of_samples, max_depth)
         self.rand_1 = np.random.rand(height, width, number_of_samples, max_depth)
+        self.rand_0_logit = np.log(self.rand_0/(1-self.rand_0))
+        self.rand_1_logit = np.log(self.rand_1/(1-self.rand_1))
+        self.bounce_record = np.ones((height, width, number_of_samples, max_depth), dtype=np.int8)
+        self.record_log_pdf = np.zeros((height, width, number_of_samples, max_depth), dtype=np.float64)
